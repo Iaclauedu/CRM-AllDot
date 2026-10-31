@@ -14,16 +14,39 @@ import {
   Compass,
   Zap,
   LogOut,
+  Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import { DADOS_MEMBROS } from '@/lib/mock-data';
 import { useCustomBranding } from '@/lib/branding-context';
 import { AllDotLogo } from '@/components/layout/alldot-logo';
 import { createClient } from '@/lib/supabase/client';
+import {
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const usuarioLogado = DADOS_MEMBROS[0];
+  const [modalLogoutAberto, setModalLogoutAberto] = React.useState(false);
+  const [saindo, setSaindo] = React.useState(false);
+
+  const handleConfirmarLogout = async () => {
+    setSaindo(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Erro ao deslogar:', e);
+    }
+    router.push('/login');
+  };
 
   const itens = React.useMemo(
     () => [
@@ -144,17 +167,11 @@ export function Sidebar() {
           <HelpCircle className="h-5 w-5" />
         </button>
 
-        {/* Botão de Logout Supabase */}
+        {/* Botão de Logout com Confirmação */}
         <button
-          onClick={async () => {
-            try {
-              const supabase = createClient();
-              await supabase.auth.signOut();
-            } catch (e) {
-              console.warn('Erro ao deslogar:', e);
-            }
-            router.push('/login');
-          }}
+          id="btn-logout"
+          type="button"
+          onClick={() => setModalLogoutAberto(true)}
           title="Sair do AllDot CRM (Logout)"
           className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
         >
@@ -176,6 +193,61 @@ export function Sidebar() {
           <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-[#0B132B]" />
         </div>
       </div>
+
+      {/* Modal de Confirmação de Saída / Logout */}
+      <Dialog open={modalLogoutAberto} onOpenChange={setModalLogoutAberto}>
+        <div className="space-y-4">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                <LogOut className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle>Confirmar Saída do Sistema</DialogTitle>
+                <DialogDescription>
+                  Tem certeza de que deseja encerrar a sua sessão no AllDot CRM?
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Todas as suas alterações salvas e negociações permanecem armazenadas com segurança no banco de dados. Você precisará digitar suas credenciais para entrar novamente.
+          </p>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalLogoutAberto(false)}
+              disabled={saindo}
+            >
+              Cancelar
+            </Button>
+            <Button
+              id="btn-confirmar-logout"
+              type="button"
+              size="sm"
+              onClick={handleConfirmarLogout}
+              disabled={saindo}
+              className="bg-rose-600 hover:bg-rose-500 text-white gap-1.5"
+            >
+              {saindo ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Encerrando Sessão...</span>
+                </>
+              ) : (
+                <>
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span>Sim, Sair da Conta</span>
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </div>
+      </Dialog>
     </aside>
   );
 }

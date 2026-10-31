@@ -695,39 +695,78 @@ let memoriaMembros: Membro[] = [...DADOS_MEMBROS];
 export async function buscarMembrosDoBanco(): Promise<Membro[]> {
   try {
     const supabase = createClient() as any;
-    const { data, error } = await supabase
+
+    // 1. Busca todos os perfis cadastrados no Supabase
+    const { data: perfis, error: errPerfis } = await supabase
+      .from('perfis')
+      .select('id, nome_completo, email, avatar_url, telefone')
+      .order('criado_em', { ascending: true });
+
+    // 2. Busca os cargos vinculados na organização
+    const { data: membrosOrg } = await supabase
       .from('membros_organizacao')
-      .select(`
-        id,
-        cargo,
-        ativo,
-        perfil:perfis (
-          id,
-          nome_completo,
-          email,
-          avatar_url,
-          telefone
-        )
-      `)
-      .eq('organizacao_id', ORG_PADRAO_ID)
+      .select('perfil_id, cargo, ativo')
       .eq('ativo', true);
 
-    if (error || !data || data.length === 0) {
-      return memoriaMembros;
+    if (perfis && perfis.length > 0) {
+      const mapaCargos = new Map<string, 'admin' | 'gestor' | 'vendedor'>();
+      if (membrosOrg && membrosOrg.length > 0) {
+        membrosOrg.forEach((m: any) => {
+          if (m.perfil_id && m.cargo) {
+            mapaCargos.set(m.perfil_id, m.cargo);
+          }
+        });
+      }
+
+      const membrosSupabase: Membro[] = perfis.map((p: any) => ({
+        id: p.id,
+        nome_completo: p.nome_completo || 'Membro da Equipe',
+        email: p.email || '',
+        cargo: (mapaCargos.get(p.id) || 'vendedor') as 'admin' | 'gestor' | 'vendedor',
+        avatar_url:
+          p.avatar_url ||
+          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+            p.nome_completo || 'Membro'
+          )}&backgroundColor=0284c7,0ea5e9,10b981,6366f1`,
+      }));
+
+      // Garante que membros da sessão local também sejam preservados
+      const mapaExistentes = new Set(membrosSupabase.map((m) => m.email.toLowerCase()));
+      const extras = memoriaMembros.filter(
+        (m) => !mapaExistentes.has(m.email.toLowerCase())
+      );
+      const listaCombinada = [...membrosSupabase, ...extras];
+
+      memoriaMembros = listaCombinada;
+      return listaCombinada;
     }
 
-    const membrosFormatados: Membro[] = data.map((item: any) => ({
-      id: item.perfil?.id || item.id,
-      nome_completo: item.perfil?.nome_completo || 'Membro da Equipe',
-      email: item.perfil?.email || '',
-      cargo: (item.cargo as 'admin' | 'gestor' | 'vendedor') || 'vendedor',
-      avatar_url: item.perfil?.avatar_url || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150`,
-    }));
+    // Fallback: Tentativa com join padrão PostgREST
+    const { data: joinData } = await supabase
+      .from('membros_organizacao')
+      .select('id, cargo, ativo, perfil_id, perfis(id, nome_completo, email, avatar_url, telefone)')
+      .eq('ativo', true);
 
-    memoriaMembros = membrosFormatados;
-    return membrosFormatados;
+    if (joinData && joinData.length > 0) {
+      const formatados: Membro[] = joinData.map((item: any) => ({
+        id: item.perfis?.id || item.perfil_id || item.id,
+        nome_completo: item.perfis?.nome_completo || 'Membro da Equipe',
+        email: item.perfis?.email || '',
+        cargo: (item.cargo as 'admin' | 'gestor' | 'vendedor') || 'vendedor',
+        avatar_url:
+          item.perfis?.avatar_url ||
+          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+            item.perfis?.nome_completo || 'Membro'
+          )}`,
+      }));
+
+      memoriaMembros = formatados;
+      return formatados;
+    }
+
+    return memoriaMembros;
   } catch (err) {
-    console.warn('Fallback para membros em memória:', err);
+    console.warn('Erro ao consultar Supabase, utilizando membros locais:', err);
     return memoriaMembros;
   }
 }

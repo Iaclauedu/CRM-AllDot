@@ -20,6 +20,7 @@ import {
   AlertTriangle,
   Palette,
   Copy,
+  RefreshCw,
 } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
@@ -67,6 +68,7 @@ export default function PaginaConfiguracoes() {
   const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
   const [modalConvidarAberto, setModalConvidarAberto] = React.useState(false);
   const [feedbackMembro, setFeedbackMembro] = React.useState<{ tipo: 'sucesso' | 'info'; texto: string } | null>(null);
+  const [recarregandoMembros, setRecarregandoMembros] = React.useState(false);
 
   // Nova etapa
   const [adicionando, setAdicionando] = React.useState(false);
@@ -194,6 +196,25 @@ export default function PaginaConfiguracoes() {
       texto: `Link de primeiro acesso de ${membro.nome_completo} copiado! Envie diretamente via WhatsApp ou Teams.`,
     });
     setTimeout(() => setFeedbackMembro(null), 5000);
+  };
+
+  const handleSincronizarMembros = async () => {
+    setRecarregandoMembros(true);
+    try {
+      const membrosDb = await buscarMembrosDoBanco();
+      if (membrosDb && membrosDb.length > 0) {
+        setMembros(membrosDb);
+      }
+      setFeedbackMembro({
+        tipo: 'sucesso',
+        texto: 'Lista de membros sincronizada com o banco de dados Supabase!',
+      });
+      setTimeout(() => setFeedbackMembro(null), 4000);
+    } catch (err) {
+      console.warn('Erro ao sincronizar membros:', err);
+    } finally {
+      setRecarregandoMembros(false);
+    }
   };
 
   const handleAdicionarEtapa = async () => {
@@ -408,17 +429,36 @@ export default function PaginaConfiguracoes() {
                   Gerencie os usuários do workspace e altere o nível de permissão (Admin, Gestor ou Vendedor).
                 </p>
               </div>
-              <Button
-                id="btn-convidar-membro"
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors"
-                onClick={() => setModalConvidarAberto(true)}
-              >
-                <UserPlus className="h-3.5 w-3.5" />
-                <span>Convidar Membro</span>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  id="btn-sincronizar-membros"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSincronizarMembros}
+                  disabled={recarregandoMembros}
+                  className="text-xs gap-1.5 border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  title="Atualizar lista com dados do Supabase"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${
+                      recarregandoMembros ? 'animate-spin text-emerald-400' : ''
+                    }`}
+                  />
+                  <span>{recarregandoMembros ? 'Sincronizando...' : 'Sincronizar Banco'}</span>
+                </Button>
+                <Button
+                  id="btn-convidar-membro"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors"
+                  onClick={() => setModalConvidarAberto(true)}
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span>Convidar Membro</span>
+                </Button>
+              </div>
             </div>
 
             {feedbackMembro && (
