@@ -13,6 +13,7 @@ import {
   type Contato,
   type Empresa,
   type Produto,
+  type Membro,
 } from '@/lib/mock-data';
 
 const ORG_PADRAO_ID = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
@@ -684,3 +685,137 @@ export async function criarProdutoNoBanco(novo: Partial<Produto>): Promise<Produ
 
   return produtoLocal;
 }
+
+// ==============================================================================
+// 7. MEMBROS DA EQUIPE E NÍVEIS DE PERMISSÃO
+// ==============================================================================
+
+let memoriaMembros: Membro[] = [...DADOS_MEMBROS];
+
+export async function buscarMembrosDoBanco(): Promise<Membro[]> {
+  try {
+    const supabase = createClient() as any;
+    const { data, error } = await supabase
+      .from('membros_organizacao')
+      .select(`
+        id,
+        cargo,
+        ativo,
+        perfil:perfis (
+          id,
+          nome_completo,
+          email,
+          avatar_url,
+          telefone
+        )
+      `)
+      .eq('organizacao_id', ORG_PADRAO_ID)
+      .eq('ativo', true);
+
+    if (error || !data || data.length === 0) {
+      return memoriaMembros;
+    }
+
+    const membrosFormatados: Membro[] = data.map((item: any) => ({
+      id: item.perfil?.id || item.id,
+      nome_completo: item.perfil?.nome_completo || 'Membro da Equipe',
+      email: item.perfil?.email || '',
+      cargo: (item.cargo as 'admin' | 'gestor' | 'vendedor') || 'vendedor',
+      avatar_url: item.perfil?.avatar_url || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150`,
+    }));
+
+    memoriaMembros = membrosFormatados;
+    return membrosFormatados;
+  } catch (err) {
+    console.warn('Fallback para membros em memória:', err);
+    return memoriaMembros;
+  }
+}
+
+export async function adicionarMembroNoBanco(dados: {
+  nome_completo: string;
+  email: string;
+  cargo: 'admin' | 'gestor' | 'vendedor';
+  telefone?: string;
+  avatar_url?: string;
+}): Promise<Membro> {
+  const novoId = crypto.randomUUID();
+  const novoMembro: Membro = {
+    id: novoId,
+    nome_completo: dados.nome_completo.trim(),
+    email: dados.email.trim().toLowerCase(),
+    cargo: dados.cargo,
+    avatar_url:
+      dados.avatar_url ||
+      `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(dados.nome_completo)}&backgroundColor=0284c7,0ea5e9,10b981,6366f1`,
+  };
+
+  memoriaMembros = [novoMembro, ...memoriaMembros];
+
+  try {
+    const supabase = createClient() as any;
+
+    // 1. Cadastra ou atualiza o perfil
+    await supabase.from('perfis').upsert({
+      id: novoId,
+      nome_completo: novoMembro.nome_completo,
+      email: novoMembro.email,
+      telefone: dados.telefone || null,
+      avatar_url: novoMembro.avatar_url,
+    });
+
+    // 2. Vincula à organização com o nível de permissão
+    await supabase.from('membros_organizacao').insert({
+      organizacao_id: ORG_PADRAO_ID,
+      perfil_id: novoId,
+      cargo: novoMembro.cargo,
+      ativo: true,
+    });
+  } catch (err) {
+    console.warn('Banco remoto indisponível, membro mantido na sessão local:', err);
+  }
+
+  return novoMembro;
+}
+
+export async function atualizarCargoMembroNoBanco(
+  membroId: string,
+  novoCargo: 'admin' | 'gestor' | 'vendedor'
+): Promise<boolean> {
+  memoriaMembros = memoriaMembros.map((m) =>
+    m.id === membroId ? { ...m, cargo: novoCargo } : m
+  );
+
+  try {
+    const supabase = createClient() as any;
+    await supabase
+      .from('membros_organizacao')
+      .update({ cargo: novoCargo })
+      .eq('organizacao_id', ORG_PADRAO_ID)
+      .eq('perfil_id', membroId);
+
+    return true;
+  } catch (err) {
+    console.warn('Erro ao atualizar cargo no banco, salvo localmente:', err);
+    return true;
+  }
+}
+
+export async function removerMembroDoBanco(membroId: string): Promise<boolean> {
+  memoriaMembros = memoriaMembros.filter((m) => m.id !== membroId);
+
+  try {
+    const supabase = createClient() as any;
+    await supabase
+      .from('membros_organizacao')
+      .delete()
+      .eq('organizacao_id', ORG_PADRAO_ID)
+      .eq('perfil_id', membroId);
+
+    return true;
+  } catch (err) {
+    console.warn('Erro ao remover membro no banco, removido localmente:', err);
+    return true;
+  }
+}
+

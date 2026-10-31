@@ -34,6 +34,7 @@ import {
   DADOS_FUNIS,
   type Funil,
   type EtapaFunil,
+  type Membro,
 } from '@/lib/mock-data';
 import {
   buscarFunisDoBanco,
@@ -41,7 +42,12 @@ import {
   atualizarNomeOuPropriedadesEtapaBanco,
   adicionarEtapaAoFunilBanco,
   removerEtapaDoFunilBanco,
+  buscarMembrosDoBanco,
+  atualizarCargoMembroNoBanco,
+  removerMembroDoBanco,
 } from '@/lib/supabase/service';
+import { ModalConvidarMembro } from '@/components/configuracoes/modal-convidar-membro';
+import { UserPlus } from 'lucide-react';
 
 export default function PaginaConfiguracoes() {
   const [abaAtiva, setAbaAtiva] = React.useState<'branding' | 'funil' | 'workspace'>('branding');
@@ -56,13 +62,18 @@ export default function PaginaConfiguracoes() {
   const [salvandoEtapas, setSalvandoEtapas] = React.useState(false);
   const [mensagemSucesso, setMensagemSucesso] = React.useState<string | null>(null);
 
+  // Estados para Gestão de Membros e Permissões
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
+  const [modalConvidarAberto, setModalConvidarAberto] = React.useState(false);
+  const [feedbackMembro, setFeedbackMembro] = React.useState<{ tipo: 'sucesso' | 'info'; texto: string } | null>(null);
+
   // Nova etapa
   const [adicionando, setAdicionando] = React.useState(false);
   const [novoNome, setNovoNome] = React.useState('');
   const [novaProbabilidade, setNovaProbabilidade] = React.useState<number>(50);
   const [novosDiasEstagnacao, setNovosDiasEstagnacao] = React.useState<number>(7);
 
-  // Carrega funis e etapas do Supabase
+  // Carrega funis, etapas e membros do Supabase
   React.useEffect(() => {
     buscarFunisDoBanco().then((f) => {
       if (f && f.length > 0) {
@@ -73,6 +84,19 @@ export default function PaginaConfiguracoes() {
         });
       }
     });
+
+    buscarMembrosDoBanco().then((m) => {
+      if (m && m.length > 0) setMembros(m);
+    });
+
+    // Detecta aba inicial via query string ou hash
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam === 'workspace' || tabParam === 'funil' || tabParam === 'branding') {
+        setAbaAtiva(tabParam);
+      }
+    }
   }, []);
 
   const handleTrocarFunil = async (novoFunilId: string) => {
@@ -103,6 +127,61 @@ export default function PaginaConfiguracoes() {
 
     const reordenadas = copia.map((e, i) => ({ ...e, ordem: i + 1 }));
     setEtapas(reordenadas);
+  };
+
+  const handleMembroAdicionado = (novoMembro: Membro) => {
+    setMembros((prev) => [novoMembro, ...prev.filter((m) => m.id !== novoMembro.id)]);
+    const cargoFormatado =
+      novoMembro.cargo === 'admin'
+        ? 'Administrador'
+        : novoMembro.cargo === 'gestor'
+        ? 'Gestor'
+        : 'Vendedor';
+    setFeedbackMembro({
+      tipo: 'sucesso',
+      texto: `Novo membro ${novoMembro.nome_completo} adicionado com sucesso como "${cargoFormatado}"!`,
+    });
+    setTimeout(() => setFeedbackMembro(null), 5000);
+  };
+
+  const handleAlterarCargo = async (
+    membroId: string,
+    novoCargo: 'admin' | 'gestor' | 'vendedor'
+  ) => {
+    const membroAlvo = membros.find((m) => m.id === membroId);
+    const nomeMembro = membroAlvo?.nome_completo || 'Membro';
+
+    // Atualização otimista
+    setMembros((prev) =>
+      prev.map((m) => (m.id === membroId ? { ...m, cargo: novoCargo } : m))
+    );
+
+    await atualizarCargoMembroNoBanco(membroId, novoCargo);
+
+    const cargoLabel =
+      novoCargo === 'admin'
+        ? 'Administrador'
+        : novoCargo === 'gestor'
+        ? 'Gestor'
+        : 'Vendedor';
+
+    setFeedbackMembro({
+      tipo: 'sucesso',
+      texto: `Nível de permissão de ${nomeMembro} alterado para "${cargoLabel}".`,
+    });
+    setTimeout(() => setFeedbackMembro(null), 4000);
+  };
+
+  const handleRemoverMembro = async (membroId: string, nomeMembro: string) => {
+    if (confirm(`Tem certeza que deseja remover ${nomeMembro} da equipe?`)) {
+      setMembros((prev) => prev.filter((m) => m.id !== membroId));
+      await removerMembroDoBanco(membroId);
+      setFeedbackMembro({
+        tipo: 'info',
+        texto: `${nomeMembro} foi removido da organização.`,
+      });
+      setTimeout(() => setFeedbackMembro(null), 4000);
+    }
   };
 
   const handleAdicionarEtapa = async () => {
@@ -217,6 +296,7 @@ export default function PaginaConfiguracoes() {
           {/* Navegação por Abas de Configuração */}
           <div className="flex items-center gap-2 border-b border-border/80 pb-2 overflow-x-auto">
             <button
+              id="tab-branding"
               type="button"
               onClick={() => setAbaAtiva('branding')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
@@ -233,6 +313,7 @@ export default function PaginaConfiguracoes() {
             </button>
 
             <button
+              id="tab-funil"
               type="button"
               onClick={() => setAbaAtiva('funil')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
@@ -246,6 +327,7 @@ export default function PaginaConfiguracoes() {
             </button>
 
             <button
+              id="tab-workspace"
               type="button"
               onClick={() => setAbaAtiva('workspace')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
@@ -304,40 +386,118 @@ export default function PaginaConfiguracoes() {
 
           {/* Membros e Permissões */}
           <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <Users className="h-4 w-4 text-sky-400" />
-                Membros da Equipe ({DADOS_MEMBROS.length})
-              </h2>
-              <Button variant="outline" size="sm" className="text-xs">
-                Convidar Membro
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="h-4 w-4 text-sky-400" />
+                  Membros da Equipe ({membros.length})
+                </h2>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Gerencie os usuários do workspace e altere o nível de permissão (Admin, Gestor ou Vendedor).
+                </p>
+              </div>
+              <Button
+                id="btn-convidar-membro"
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors"
+                onClick={() => setModalConvidarAberto(true)}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                <span>Convidar Membro</span>
               </Button>
             </div>
 
+            {feedbackMembro && (
+              <div
+                className={`flex items-center gap-2 rounded-lg p-2.5 text-xs transition-all ${
+                  feedbackMembro.tipo === 'sucesso'
+                    ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                    : 'border border-sky-500/20 bg-sky-500/10 text-sky-400'
+                }`}
+              >
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{feedbackMembro.texto}</span>
+              </div>
+            )}
+
             <div className="divide-y divide-border/60">
-              {DADOS_MEMBROS.map((membro) => (
-                <div key={membro.id} className="flex items-center justify-between py-2.5">
-                  <div className="flex items-center gap-2.5">
+              {membros.map((membro) => (
+                <div key={membro.id} className="flex items-center justify-between py-2.5 gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={membro.avatar_url}
                       alt={membro.nome_completo}
-                      className="h-7 w-7 rounded-full object-cover border border-border"
+                      className="h-8 w-8 rounded-full object-cover border border-border shrink-0 bg-muted"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                          membro.nome_completo
+                        )}`;
+                      }}
                     />
-                    <div>
-                      <p className="text-xs font-medium text-foreground">{membro.nome_completo}</p>
-                      <p className="text-[11px] text-muted-foreground">{membro.email}</p>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground truncate">
+                        {membro.nome_completo}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">{membro.email}</p>
                     </div>
                   </div>
-                  <Badge variant={membro.cargo === 'admin' ? 'info' : 'secondary'} className="capitalize">
-                    {membro.cargo}
-                  </Badge>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Seletor de Nível de Permissão Interativo */}
+                    <div className="relative">
+                      <select
+                        value={membro.cargo}
+                        onChange={(e) =>
+                          handleAlterarCargo(
+                            membro.id,
+                            e.target.value as 'admin' | 'gestor' | 'vendedor'
+                          )
+                        }
+                        className={`h-7 px-2.5 pr-6 rounded-md text-[11px] font-semibold appearance-none cursor-pointer border transition-colors outline-none focus:ring-1 focus:ring-emerald-500 ${
+                          membro.cargo === 'admin'
+                            ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
+                            : membro.cargo === 'gestor'
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                            : 'bg-zinc-800/80 border-border text-zinc-300 hover:bg-zinc-800'
+                        }`}
+                        title="Alterar nível de permissão deste usuário"
+                      >
+                        <option value="admin" className="bg-[#0B132B] text-sky-400">
+                          Admin (Acesso Total)
+                        </option>
+                        <option value="gestor" className="bg-[#0B132B] text-emerald-400">
+                          Gestor (Supervisão)
+                        </option>
+                        <option value="vendedor" className="bg-[#0B132B] text-zinc-300">
+                          Vendedor (Execução)
+                        </option>
+                      </select>
+                      <ChevronDown className="h-3 w-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                    </div>
+
+                    {/* Excluir membro (apenas se houver mais de 1) */}
+                    {membros.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoverMembro(membro.id, membro.nome_completo)}
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        title={`Remover ${membro.nome_completo} da equipe`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
-              </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
           {/* Conteúdo Aba: Etapas do Funil & Rotting */}
           {abaAtiva === 'funil' && (
@@ -607,6 +767,14 @@ export default function PaginaConfiguracoes() {
       )}
         </div>
       </div>
+
+      {/* Modal para Convidar e Criar Novos Membros */}
+      <ModalConvidarMembro
+        open={modalConvidarAberto}
+        onOpenChange={setModalConvidarAberto}
+        onMembroAdicionado={handleMembroAdicionado}
+        membrosExistentes={membros}
+      />
     </div>
   );
 }
