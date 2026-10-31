@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { createClient } from '@/lib/supabase/client';
 import { AllDotLogo } from '@/components/layout/alldot-logo';
 
-export default function PaginaLogin() {
+function ConteudoLogin() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -555,5 +555,19 @@ export default function PaginaLogin() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaginaLogin() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex min-h-screen w-full items-center justify-center bg-[#0B132B]">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#E42358] border-t-transparent" />
+        </div>
+      }
+    >
+      <ConteudoLogin />
+    </React.Suspense>
   );
 }
