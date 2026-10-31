@@ -57,6 +57,14 @@ BEGIN
         (v_user_vendedor_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'lucas.vendedor@acme.com', crypt('senha123', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"nome_completo":"Lucas Vendas (Closer)"}', now(), now())
     ON CONFLICT (id) DO NOTHING;
 
+    -- 2.1 IDENTIDADES DE AUTENTICAÇÃO (auth.identities - Necessário para GoTrue / signInWithPassword)
+    INSERT INTO auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+    VALUES
+        (v_user_admin_id, v_user_admin_id, json_build_object('sub', v_user_admin_id::text, 'email', 'carlos.admin@acme.com')::jsonb, 'email', v_user_admin_id::text, now(), now(), now()),
+        (v_user_gestor_id, v_user_gestor_id, json_build_object('sub', v_user_gestor_id::text, 'email', 'mariana.gestora@acme.com')::jsonb, 'email', v_user_gestor_id::text, now(), now(), now()),
+        (v_user_vendedor_id, v_user_vendedor_id, json_build_object('sub', v_user_vendedor_id::text, 'email', 'lucas.vendedor@acme.com')::jsonb, 'email', v_user_vendedor_id::text, now(), now(), now())
+    ON CONFLICT (provider, provider_id) DO NOTHING;
+
     -- 3. ORGANIZAÇÃO DEMO
     INSERT INTO public.organizacoes (id, nome, slug, cnpj, segmento, plano, ativa)
     VALUES (

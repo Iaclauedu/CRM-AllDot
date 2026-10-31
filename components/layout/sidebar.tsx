@@ -13,8 +13,12 @@ import {
   HelpCircle,
   Compass,
   Zap,
+  LogOut,
 } from 'lucide-react';
 import { DADOS_MEMBROS } from '@/lib/mock-data';
+import { useCustomBranding } from '@/lib/branding-context';
+import { AllDotLogo } from '@/components/layout/alldot-logo';
+import { createClient } from '@/lib/supabase/client';
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -49,23 +53,37 @@ export function Sidebar() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [itens, router]);
 
+  const { branding } = useCustomBranding();
+
   return (
-    <aside className="w-16 bg-[#0B132B] text-white flex flex-col items-center py-4 select-none shrink-0 border-r border-slate-800/80 z-30 justify-between shadow-2xl">
-      {/* Topo: Logo Marca Oficial AllDot */}
+    <aside
+      className="w-16 text-white flex flex-col items-center py-4 select-none shrink-0 border-r border-slate-800/80 z-30 justify-between shadow-2xl transition-colors duration-300"
+      style={{ backgroundColor: branding.corSidebar || '#0B132B' }}
+    >
+      {/* Topo: Logo Marca (Suporta Logo Customizado do Cliente) */}
       <div className="flex flex-col items-center gap-6 w-full">
-        <Link href="/" title="AllDot CRM - Ir para Início" className="group relative">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-[#DE1B54] via-[#E42358] to-[#FF4B7D] text-white font-extrabold text-base shadow-lg shadow-[#E42358]/30 transition-all duration-200 group-hover:scale-105 group-hover:shadow-[#E42358]/50 ring-2 ring-white/10">
-            <span className="tracking-tighter font-mono">A<span className="text-white drop-shadow-md">.</span></span>
+        <Link href="/" title={`${branding.empresaNome} - Ir para Início`} className="group relative">
+          <div className="transition-all duration-200 group-hover:scale-105">
+            <AllDotLogo variant="icon-only" size="md" />
           </div>
           {/* Subtle pulse ring on logo */}
           <span className="absolute -bottom-1 -right-1 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#E42358] opacity-60" />
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-[#E42358] border-2 border-[#0B132B]" />
+            <span
+              className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60"
+              style={{ backgroundColor: branding.corPrimaria }}
+            />
+            <span
+              className="relative inline-flex rounded-full h-3 w-3 border-2"
+              style={{
+                backgroundColor: branding.corPrimaria,
+                borderColor: branding.corSidebar || '#0B132B',
+              }}
+            />
           </span>
         </Link>
 
         {/* Separador elegante */}
-        <div className="w-8 h-px bg-gradient-to-r from-transparent via-slate-700 to-transparent" />
+        <div className="w-8 h-px bg-gradient-to-r from-transparent via-slate-700/60 to-transparent" />
 
         {/* Navegação Principal */}
         <nav className="flex flex-col items-center gap-2 w-full px-2">
@@ -77,15 +95,23 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                style={
+                  ativo
+                    ? {
+                        backgroundColor: branding.corPrimaria,
+                        boxShadow: `0 4px 14px ${branding.corPrimaria}40`,
+                      }
+                    : undefined
+                }
                 className={`relative group flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 ${
                   ativo
-                    ? 'bg-[#E42358] text-white shadow-lg shadow-[#E42358]/30'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                    ? 'text-white'
+                    : 'text-slate-400 hover:text-white hover:bg-white/10'
                 }`}
               >
                 <Icone className={`h-5 w-5 shrink-0 transition-transform duration-200 ${ativo ? 'scale-110' : 'group-hover:scale-110'}`} />
 
-                {/* Tooltip AllDot com atalho */}
+                {/* Tooltip com atalho */}
                 <div className="pointer-events-none absolute left-16 z-50 hidden rounded-lg bg-slate-900 border border-slate-700/80 px-3 py-1.5 text-xs font-semibold text-white shadow-2xl group-hover:flex items-center gap-2 whitespace-nowrap backdrop-blur-md">
                   <span>{item.titulo}</span>
                   <kbd className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400 font-mono border border-slate-700">
@@ -95,7 +121,13 @@ export function Sidebar() {
 
                 {/* Indicador de item ativo */}
                 {ativo && (
-                  <span className="absolute -left-2.5 h-6 w-1 rounded-r-full bg-[#E42358] shadow-[0_0_8px_#E42358]" />
+                  <span
+                    className="absolute -left-2.5 h-6 w-1 rounded-r-full"
+                    style={{
+                      backgroundColor: branding.corPrimaria,
+                      boxShadow: `0 0 8px ${branding.corPrimaria}`,
+                    }}
+                  />
                 )}
               </Link>
             );
@@ -103,8 +135,8 @@ export function Sidebar() {
         </nav>
       </div>
 
-      {/* Rodapé: Atalho Rápido IA & Perfil */}
-      <div className="flex flex-col items-center gap-4 w-full px-2 pt-3 border-t border-slate-800/80">
+      {/* Rodapé: Central de Ajuda & Perfil / Logout */}
+      <div className="flex flex-col items-center gap-3 w-full px-2 pt-3 border-t border-slate-800/80">
         <button
           title="Central de Ajuda & Documentação AllDot"
           className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
@@ -112,10 +144,28 @@ export function Sidebar() {
           <HelpCircle className="h-5 w-5" />
         </button>
 
+        {/* Botão de Logout Supabase */}
+        <button
+          onClick={async () => {
+            try {
+              const supabase = createClient();
+              await supabase.auth.signOut();
+            } catch (e) {
+              console.warn('Erro ao deslogar:', e);
+            }
+            router.push('/login');
+          }}
+          title="Sair do AllDot CRM (Logout)"
+          className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
+
         {/* Avatar do Usuário com Indicador de Presença */}
         <div
+          onClick={() => router.push('/configuracoes')}
           className="relative group cursor-pointer"
-          title={`${usuarioLogado.nome_completo} (${usuarioLogado.cargo})`}
+          title={`${usuarioLogado.nome_completo} (${usuarioLogado.cargo}) - Clique para Perfil`}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

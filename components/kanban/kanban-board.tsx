@@ -22,6 +22,7 @@ import { KanbanListView } from './kanban-list-view';
 import { ModalMotivoPerda } from './modal-motivo-perda';
 import { ModalNovoNegocio } from './modal-novo-negocio';
 import { ModalNovoFunil } from './modal-novo-funil';
+import { ModalEditarFunil } from './modal-editar-funil';
 import { ModalGerenciarFases } from './modal-gerenciar-fases';
 import { Visao360Drawer } from '@/components/negocio/visao-360-drawer';
 import {
@@ -62,6 +63,8 @@ import {
   Layers,
   Settings,
   GripVertical,
+  Pencil,
+  Edit2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,13 +72,20 @@ import { Input } from '@/components/ui/input';
 interface KanbanBoardProps {
   onCardClick?: (negocio: Negocio) => void;
   onNovoNegocioClickRef?: (abrir: () => void) => void;
+  onFunilAtivoChange?: (nome: string) => void;
 }
 
-export function KanbanBoard({ onCardClick, onNovoNegocioClickRef }: KanbanBoardProps) {
+export function KanbanBoard({
+  onCardClick,
+  onNovoNegocioClickRef,
+  onFunilAtivoChange,
+}: KanbanBoardProps) {
   const [funis, setFunis] = React.useState<Funil[]>(DADOS_FUNIS);
   const [funilAtivo, setFunilAtivo] = React.useState<Funil>(DADOS_FUNIS[0]);
   const [dropdownFunisAberto, setDropdownFunisAberto] = React.useState(false);
   const [modalNovoFunilAberta, setModalNovoFunilAberta] = React.useState(false);
+  const [modalEditarFunilAberta, setModalEditarFunilAberta] = React.useState(false);
+  const [funilParaEditar, setFunilParaEditar] = React.useState<Funil | null>(null);
   const [modalGerenciarFasesAberta, setModalGerenciarFasesAberta] = React.useState(false);
 
   const [etapas, setEtapas] = React.useState<EtapaFunil[]>(DADOS_ETAPAS);
@@ -94,6 +104,7 @@ export function KanbanBoard({ onCardClick, onNovoNegocioClickRef }: KanbanBoardP
           if (funisDb && funisDb.length > 0) {
             setFunis(funisDb);
             setFunilAtivo(funisDb[0]);
+            onFunilAtivoChange?.(funisDb[0].nome);
           }
           if (etapasDb && etapasDb.length > 0) setEtapas(etapasDb);
           if (negociosDb && negociosDb.length > 0) setNegocios(negociosDb);
@@ -106,11 +117,12 @@ export function KanbanBoard({ onCardClick, onNovoNegocioClickRef }: KanbanBoardP
     return () => {
       ativo = false;
     };
-  }, []);
+  }, [onFunilAtivoChange]);
 
   // Troca de funil
   const handleSelecionarFunil = async (novoFunil: Funil) => {
     setFunilAtivo(novoFunil);
+    onFunilAtivoChange?.(novoFunil.nome);
     setDropdownFunisAberto(false);
     try {
       const etapasDb = await buscarEtapasDoBanco(novoFunil.id);
@@ -125,8 +137,21 @@ export function KanbanBoard({ onCardClick, onNovoNegocioClickRef }: KanbanBoardP
   const handleFunilCriado = (novoFunil: Funil, novasEtapas: EtapaFunil[]) => {
     setFunis((prev) => [...prev, novoFunil]);
     setFunilAtivo(novoFunil);
+    onFunilAtivoChange?.(novoFunil.nome);
     setEtapas(novasEtapas);
     setMensagemSucesso(`Funil "${novoFunil.nome}" criado com sucesso!`);
+    setTimeout(() => setMensagemSucesso(null), 3500);
+  };
+
+  const handleFunilAtualizado = (funilAtualizado: Funil) => {
+    setFunis((prev) =>
+      prev.map((f) => (f.id === funilAtualizado.id ? funilAtualizado : f))
+    );
+    if (funilAtivo.id === funilAtualizado.id) {
+      setFunilAtivo(funilAtualizado);
+      onFunilAtivoChange?.(funilAtualizado.nome);
+    }
+    setMensagemSucesso(`Funil renomeado para "${funilAtualizado.nome}" com sucesso!`);
     setTimeout(() => setMensagemSucesso(null), 3500);
   };
 
@@ -377,47 +402,96 @@ export function KanbanBoard({ onCardClick, onNovoNegocioClickRef }: KanbanBoardP
             </div>
 
             {/* Seletor Dropdown de Funis AllDot */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setDropdownFunisAberto(!dropdownFunisAberto)}
-                className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-800 shadow-xs transition-all hover:border-slate-300"
-                title="Trocar funil / pipeline de vendas"
-              >
-                <Layers className="h-3.5 w-3.5 text-[#E42358]" />
-                <span className="max-w-[140px] truncate">{funilAtivo.nome}</span>
-                {funilAtivo.padrao && (
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-mono text-slate-500 font-medium">
-                    Padrão
-                  </span>
-                )}
-                <ChevronDown className="h-3 w-3 text-slate-400" />
-              </button>
+            {/* Seletor de Funil Ativo com Botão de Renomear */}
+            <div className="relative flex items-center">
+              <div className="flex items-center rounded-xl border border-slate-200 bg-white hover:border-slate-300 shadow-xs transition-all">
+                <button
+                  type="button"
+                  onClick={() => setDropdownFunisAberto(!dropdownFunisAberto)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-slate-800"
+                  title="Trocar funil / pipeline de vendas"
+                >
+                  <Layers className="h-3.5 w-3.5 text-[#E42358]" />
+                  <span className="max-w-[140px] truncate">{funilAtivo.nome}</span>
+                  {funilAtivo.padrao && (
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-mono text-slate-500 font-medium">
+                      Padrão
+                    </span>
+                  )}
+                  <ChevronDown className="h-3 w-3 text-slate-400" />
+                </button>
+
+                <div className="h-4 w-px bg-slate-200" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFunilParaEditar(funilAtivo);
+                    setModalEditarFunilAberta(true);
+                  }}
+                  className="p-1.5 px-2 text-slate-400 hover:text-[#E42358] hover:bg-slate-50 rounded-r-xl transition-colors"
+                  title="Alterar nome deste funil"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
 
               {dropdownFunisAberto && (
-                <div className="absolute left-0 top-full mt-1.5 z-40 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in fade-in-0 duration-150">
+                <div className="absolute left-0 top-full mt-1.5 z-40 w-72 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl animate-in fade-in-0 duration-150">
                   <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">
                     Seus Funis de Vendas
                   </div>
                   <div className="space-y-0.5">
                     {funis.map((f) => (
-                      <button
+                      <div
                         key={f.id}
-                        type="button"
-                        onClick={() => handleSelecionarFunil(f)}
-                        className={`w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
+                        className={`group w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
                           f.id === funilAtivo.id
                             ? 'bg-[#E42358]/10 text-[#E42358] font-bold'
                             : 'text-slate-700 hover:bg-slate-100 font-medium'
                         }`}
                       >
-                        <span className="truncate">{f.nome}</span>
-                        {f.id === funilAtivo.id && <Check className="h-3.5 w-3.5 shrink-0" />}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelecionarFunil(f)}
+                          className="flex-1 text-left truncate mr-2"
+                        >
+                          {f.nome}
+                        </button>
+                        <div className="flex items-center gap-1">
+                          {f.id === funilAtivo.id && <Check className="h-3.5 w-3.5 shrink-0" />}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDropdownFunisAberto(false);
+                              setFunilParaEditar(f);
+                              setModalEditarFunilAberta(true);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-200/80 text-slate-500 hover:text-[#E42358] transition-all"
+                            title={`Renomear funil "${f.nome}"`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
 
                   <div className="my-1 border-t border-slate-100" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDropdownFunisAberto(false);
+                      setFunilParaEditar(funilAtivo);
+                      setModalEditarFunilAberta(true);
+                    }}
+                    className="w-full flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    <Edit2 className="h-3.5 w-3.5 text-slate-500" />
+                    <span>Renomear Funil Atual</span>
+                  </button>
 
                   <button
                     type="button"
@@ -745,6 +819,13 @@ export function KanbanBoard({ onCardClick, onNovoNegocioClickRef }: KanbanBoardP
         onFunilCriado={handleFunilCriado}
       />
 
+      <ModalEditarFunil
+        open={modalEditarFunilAberta}
+        onOpenChange={setModalEditarFunilAberta}
+        funil={funilParaEditar}
+        onFunilAtualizado={handleFunilAtualizado}
+      />
+
       <ModalGerenciarFases
         open={modalGerenciarFasesAberta}
         onOpenChange={setModalGerenciarFasesAberta}
@@ -752,6 +833,7 @@ export function KanbanBoard({ onCardClick, onNovoNegocioClickRef }: KanbanBoardP
         etapas={etapas}
         negocios={negocios}
         onEtapasAtualizadas={handleEtapasAtualizadas}
+        onFunilAtualizado={handleFunilAtualizado}
       />
     </div>
   );

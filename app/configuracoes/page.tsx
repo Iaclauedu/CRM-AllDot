@@ -18,6 +18,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
+  Palette,
 } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
@@ -25,6 +26,7 @@ import { CommandPalette } from '@/components/layout/command-palette';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { PersonalizacaoBranding } from '@/components/configuracoes/personalizacao-branding';
 import {
   DADOS_ORGANIZACAO,
   DADOS_MEMBROS,
@@ -42,6 +44,7 @@ import {
 } from '@/lib/supabase/service';
 
 export default function PaginaConfiguracoes() {
+  const [abaAtiva, setAbaAtiva] = React.useState<'branding' | 'funil' | 'workspace'>('branding');
   const [nome, setNome] = React.useState(DADOS_ORGANIZACAO.nome);
   const [cnpj, setCnpj] = React.useState(DADOS_ORGANIZACAO.cnpj);
   const [salvo, setSalvo] = React.useState(false);
@@ -211,42 +214,93 @@ export default function PaginaConfiguracoes() {
             </p>
           </div>
 
-          {/* Dados Gerais da Organização */}
-          <form onSubmit={handleSalvarWorkspace} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
-            <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Building2 className="h-4 w-4 text-emerald-400" />
-              Informações do Workspace
-            </h2>
+          {/* Navegação por Abas de Configuração */}
+          <div className="flex items-center gap-2 border-b border-border/80 pb-2 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setAbaAtiva('branding')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
+                abaAtiva === 'branding'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              <Palette className="h-4 w-4" />
+              <span>Identidade Visual & Cores</span>
+              <span className="text-[10px] bg-white/20 text-white font-mono px-1.5 py-0.2 rounded-full font-bold">
+                Novo
+              </span>
+            </button>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-medium text-foreground block mb-1">
-                  Nome da Organização
-                </label>
-                <Input value={nome} onChange={(e) => setNome(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-foreground block mb-1">
-                  CNPJ
-                </label>
-                <Input value={cnpj} onChange={(e) => setCnpj(e.target.value)} className="font-mono" />
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setAbaAtiva('funil')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
+                abaAtiva === 'funil'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              <Layers className="h-4 w-4" />
+              <span>Etapas do Pipeline & Rotting</span>
+            </button>
 
-            <div className="flex items-center justify-between pt-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Plano Atual:</span>
-                <Badge variant="success" className="uppercase font-mono text-[10px]">
-                  {DADOS_ORGANIZACAO.plano}
-                </Badge>
-              </div>
+            <button
+              type="button"
+              onClick={() => setAbaAtiva('workspace')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
+                abaAtiva === 'workspace'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              <Building2 className="h-4 w-4" />
+              <span>Workspace & Equipe</span>
+            </button>
+          </div>
 
-              <Button type="submit" size="sm" className="gap-1.5">
-                {salvo ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : null}
-                <span>{salvo ? 'Salvo com sucesso' : 'Salvar Alterações'}</span>
-              </Button>
-            </div>
-          </form>
+          {/* Conteúdo Aba: Personalização de Marca (White-Label) */}
+          {abaAtiva === 'branding' && <PersonalizacaoBranding />}
+
+          {/* Conteúdo Aba: Workspace e Membros */}
+          {abaAtiva === 'workspace' && (
+            <div className="space-y-6">
+              {/* Dados Gerais da Organização */}
+              <form onSubmit={handleSalvarWorkspace} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
+                <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Building2 className="h-4 w-4 text-emerald-400" />
+                  Informações do Workspace
+                </h2>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-medium text-foreground block mb-1">
+                      Nome da Organização
+                    </label>
+                    <Input value={nome} onChange={(e) => setNome(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-foreground block mb-1">
+                      CNPJ
+                    </label>
+                    <Input value={cnpj} onChange={(e) => setCnpj(e.target.value)} className="font-mono" />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Plano Atual:</span>
+                    <Badge variant="success" className="uppercase font-mono text-[10px]">
+                      {DADOS_ORGANIZACAO.plano}
+                    </Badge>
+                  </div>
+
+                  <Button type="submit" size="sm" className="gap-1.5">
+                    {salvo ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : null}
+                    <span>{salvo ? 'Salvo com sucesso' : 'Salvar Alterações'}</span>
+                  </Button>
+                </div>
+              </form>
 
           {/* Membros e Permissões */}
           <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
@@ -280,11 +334,16 @@ export default function PaginaConfiguracoes() {
                   </Badge>
                 </div>
               ))}
+              </div>
             </div>
           </div>
+        )}
 
-          {/* Etapas do Funil & Dias de Estagnação (Rotting) - Totalmente Editáveis */}
-          <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
+          {/* Conteúdo Aba: Etapas do Funil & Rotting */}
+          {abaAtiva === 'funil' && (
+            <div className="space-y-6">
+              {/* Etapas do Funil & Dias de Estagnação (Rotting) - Totalmente Editáveis */}
+              <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -544,6 +603,8 @@ export default function PaginaConfiguracoes() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
         </div>
       </div>
     </div>

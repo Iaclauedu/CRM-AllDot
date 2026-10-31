@@ -14,6 +14,8 @@ export const metadata: Metadata = {
     'CRM B2B moderno com pipeline Kanban, visão 360º de negócios e estética profissional inspirada no RD Station e ClickUp com identidade visual AllDot.',
 };
 
+import { CustomBrandingProvider } from '@/lib/branding-context';
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -22,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${inter.variable} font-sans bg-[#F8FAFC] text-slate-900 min-h-screen antialiased`}>
-        {children}
+        <CustomBrandingProvider>{children}</CustomBrandingProvider>
       </body>
     </html>
   );

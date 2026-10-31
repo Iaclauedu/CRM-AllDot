@@ -15,6 +15,7 @@ import {
   atualizarNomeOuPropriedadesEtapaBanco,
   adicionarEtapaAoFunilBanco,
   removerEtapaDoFunilBanco,
+  atualizarFunilNoBanco,
 } from '@/lib/supabase/service';
 import { type Funil, type EtapaFunil, type Negocio } from '@/lib/mock-data';
 import {
@@ -37,6 +38,7 @@ interface ModalGerenciarFasesProps {
   etapas: EtapaFunil[];
   negocios: Negocio[];
   onEtapasAtualizadas: (novasEtapas: EtapaFunil[], negociosAtualizados?: Negocio[]) => void;
+  onFunilAtualizado?: (funil: Funil) => void;
 }
 
 export function ModalGerenciarFases({
@@ -46,7 +48,9 @@ export function ModalGerenciarFases({
   etapas: etapasProp,
   negocios,
   onEtapasAtualizadas,
+  onFunilAtualizado,
 }: ModalGerenciarFasesProps) {
+  const [nomeFunil, setNomeFunil] = React.useState(funil?.nome || '');
   const [etapas, setEtapas] = React.useState<EtapaFunil[]>(etapasProp);
   const [salvando, setSalvando] = React.useState(false);
   const [erro, setErro] = React.useState<string | null>(null);
@@ -63,7 +67,10 @@ export function ModalGerenciarFases({
 
   React.useEffect(() => {
     setEtapas(etapasProp);
-  }, [etapasProp, open]);
+    if (funil) {
+      setNomeFunil(funil.nome);
+    }
+  }, [etapasProp, funil, open]);
 
   // Contagem de negócios por etapa
   const contarNegocios = (etapaId: string) => {
@@ -185,12 +192,18 @@ export function ModalGerenciarFases({
     }
   };
 
-  // Salvar alterações de nomes/probabilidades
+  // Salvar alterações de nomes/probabilidades e nome do funil
   const handleSalvarTudo = async () => {
     setSalvando(true);
     setErro(null);
 
     try {
+      // Salvar nome do funil se alterado
+      if (nomeFunil.trim() && nomeFunil.trim() !== funil.nome) {
+        await atualizarFunilNoBanco(funil.id, { nome: nomeFunil.trim() });
+        onFunilAtualizado?.({ ...funil, nome: nomeFunil.trim() });
+      }
+
       for (const etapa of etapas) {
         await atualizarNomeOuPropriedadesEtapaBanco(etapa.id, {
           nome: etapa.nome,
@@ -223,11 +236,29 @@ export function ModalGerenciarFases({
                 Personalizar Fases do Funil
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Configurando fases de: <span className="font-semibold text-foreground">{funil.nome}</span>
+                Configure o nome e os estágios deste pipeline de vendas.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
+
+        {/* Campo para Alterar Nome do Funil */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Edit2 className="h-3.5 w-3.5 text-[#E42358]" />
+              <span>Nome do Funil / Pipeline</span>
+            </label>
+            <span className="text-[10px] text-slate-400 font-mono">Identificação</span>
+          </div>
+          <Input
+            value={nomeFunil}
+            onChange={(e) => setNomeFunil(e.target.value)}
+            placeholder="Ex: Funil Comercial B2B, Outbound Hunter..."
+            className="h-8 text-xs font-semibold bg-white border-slate-200 focus-visible:ring-[#E42358]"
+            required
+          />
+        </div>
 
         {erro && (
           <div className="rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-xs text-rose-700 flex items-center gap-2">

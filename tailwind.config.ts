@@ -34,9 +34,11 @@ const config: Config = {
           foreground: 'hsl(var(--popover-foreground))',
         },
         primary: {
-          DEFAULT: '#E42358',
+          DEFAULT: 'var(--brand-primary, #E42358)',
           foreground: '#FFFFFF',
         },
+        brandSidebar: 'var(--brand-sidebar-bg, #0B132B)',
+        brandTopbar: 'var(--brand-topbar-bg, #0B132B)',
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))',
@@ -55,7 +57,7 @@ const config: Config = {
         },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
-        ring: '#E42358',
+        ring: 'var(--brand-primary, #E42358)',
       },
       borderRadius: {
         lg: 'var(--radius)',

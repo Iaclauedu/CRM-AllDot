@@ -123,6 +123,28 @@ export async function criarFunilNoBanco(
   return { funil: novoFunil, etapas: etapasIniciais };
 }
 
+export async function atualizarFunilNoBanco(
+  funilId: string,
+  dados: { nome?: string; descricao?: string }
+): Promise<boolean> {
+  try {
+    const supabase = createClient() as any;
+    const { error } = await supabase
+      .from('funis')
+      .update(dados)
+      .eq('id', funilId);
+
+    if (error) {
+      console.warn('Erro ao atualizar funil no banco de dados:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Fallback para atualização de funil:', err);
+    return true;
+  }
+}
+
 export async function buscarEtapasDoBanco(funilId?: string): Promise<EtapaFunil[]> {
   try {
     const supabase = createClient() as any;

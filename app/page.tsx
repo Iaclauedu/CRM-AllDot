@@ -27,6 +27,7 @@ const KanbanBoard = dynamic(
 
 export default function PaginaInicialPipeline() {
   const [abrirNovoNegocioFn, setAbrirNovoNegocioFn] = React.useState<(() => void) | null>(null);
+  const [nomeFunil, setNomeFunil] = React.useState('Funil Comercial B2B');
 
   const handleCardClick = React.useCallback((negocio: Negocio) => {
     console.log('Negócio selecionado:', negocio);
@@ -40,13 +41,14 @@ export default function PaginaInicialPipeline() {
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar onAbrirNovoNegocio={() => abrirNovoNegocioFn?.()} />
+        <Topbar onAbrirNovoNegocio={() => abrirNovoNegocioFn?.()} nomeFunil={nomeFunil} />
         <CommandPalette />
 
         <div className="flex-1 overflow-hidden">
           <KanbanBoard
             onCardClick={handleCardClick}
             onNovoNegocioClickRef={handleNovoNegocioClickRef}
+            onFunilAtivoChange={setNomeFunil}
           />
         </div>
       </div>

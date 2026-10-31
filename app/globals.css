@@ -13,7 +13,13 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 343 78% 51%; /* #E42358 AllDot Brand Color */
+    --brand-primary: #E42358;
+    --brand-primary-hover: #C91748;
+    --brand-primary-light: #FDF2F5;
+    --brand-sidebar-bg: #0B132B;
+    --brand-topbar-bg: #0B132B;
+
+    --primary: 343 78% 51%; /* Dynamic brand primary */
     --primary-foreground: 0 0% 100%;
 
     --secondary: 210 40% 96.1%; /* #f1f5f9 */
