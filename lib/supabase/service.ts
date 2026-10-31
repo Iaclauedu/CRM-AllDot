@@ -775,7 +775,51 @@ export async function adicionarMembroNoBanco(dados: {
     console.warn('Banco remoto indisponível, membro mantido na sessão local:', err);
   }
 
+  // 3. Dispara a requisição de envio de e-mail / geração de link
+  try {
+    await fetch('/api/convite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: novoMembro.email,
+        nome_completo: novoMembro.nome_completo,
+        cargo: novoMembro.cargo,
+      }),
+    });
+  } catch (e) {
+    console.warn('Falha na rota de convite:', e);
+  }
+
   return novoMembro;
+}
+
+export async function dispararConviteEmail(dados: {
+  email: string;
+  nome_completo: string;
+  cargo: string;
+  senha_inicial?: string;
+}): Promise<{ sucesso: boolean; emailEnviado: boolean; linkAtivacao: string; avisoSmtp?: string }> {
+  try {
+    const res = await fetch('/api/convite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dados),
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn('Erro ao chamar rota de convite:', err);
+  }
+
+  const appUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  return {
+    sucesso: true,
+    emailEnviado: false,
+    linkAtivacao: `${appUrl}/login?convite=ativo&email=${encodeURIComponent(dados.email)}`,
+    avisoSmtp:
+      'O servidor SMTP do banco de dados precisa ser configurado para disparos externos. Você pode copiar o link direto de ativação.',
+  };
 }
 
 export async function atualizarCargoMembroNoBanco(

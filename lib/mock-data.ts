@@ -139,6 +139,13 @@ export const DADOS_MEMBROS: Membro[] = [
     cargo: 'vendedor',
     avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
   },
+  {
+    id: '44444444-4444-4444-a444-444444444444',
+    nome_completo: 'Cláudio Barbosa',
+    email: 'claudio.barbosa@acme.com',
+    cargo: 'vendedor',
+    avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
+  },
 ];
 
 export const DADOS_ETAPAS: EtapaFunil[] = [

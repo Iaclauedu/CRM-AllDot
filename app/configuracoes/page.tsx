@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Palette,
+  Copy,
 } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
@@ -182,6 +183,17 @@ export default function PaginaConfiguracoes() {
       });
       setTimeout(() => setFeedbackMembro(null), 4000);
     }
+  };
+
+  const handleCopiarLinkMembro = (membro: Membro) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    const link = `${origin}/login?convite=ativo&email=${encodeURIComponent(membro.email)}`;
+    navigator.clipboard.writeText(link);
+    setFeedbackMembro({
+      tipo: 'sucesso',
+      texto: `Link de primeiro acesso de ${membro.nome_completo} copiado! Envie diretamente via WhatsApp ou Teams.`,
+    });
+    setTimeout(() => setFeedbackMembro(null), 5000);
   };
 
   const handleAdicionarEtapa = async () => {
@@ -446,6 +458,19 @@ export default function PaginaConfiguracoes() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
+                    {/* Botão Copiar Link Direto de Acesso */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCopiarLinkMembro(membro)}
+                      className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-emerald-400 hover:border-emerald-500/30 transition-colors"
+                      title={`Copiar link de primeiro acesso para ${membro.nome_completo}`}
+                    >
+                      <Copy className="h-3 w-3" />
+                      <span className="hidden sm:inline">Copiar Link</span>
+                    </Button>
+
                     {/* Seletor de Nível de Permissão Interativo */}
                     <div className="relative">
                       <select
