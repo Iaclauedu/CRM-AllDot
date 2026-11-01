@@ -89,6 +89,10 @@ export function KanbanCard({
 
   // Verifica se há produtos recorrentes (MRR)
   const totalProdutos = negocio.produtos?.reduce((acc, p) => acc + p.quantidade, 0) || 0;
+  const codigoCard =
+    negocio.codigo ||
+    negocio.campos_personalizados?.codigo ||
+    `#${negocio.id.slice(0, 6).toUpperCase()}`;
 
   return (
     <div
@@ -98,23 +102,24 @@ export function KanbanCard({
       {...listeners}
       onClick={onClick}
       suppressHydrationWarning
-      className={`group relative rounded-2xl border bg-white p-3.5 shadow-xs transition-all duration-200 select-none cursor-grab active:cursor-grabbing hover:shadow-lg hover:border-[#E42358]/40 hover:-translate-y-0.5 ${
-        isEstagnado
+      className={`group relative rounded-2xl border bg-white p-3.5 shadow-xs transition-all duration-200 select-none cursor-grab active:cursor-grabbing hover:shadow-lg hover:border-[#E42358]/40 hover:-translate-y-0.5 ${isEstagnado
           ? 'border-amber-300/80 bg-gradient-to-b from-amber-50/20 to-white ring-1 ring-amber-300/50'
           : 'border-slate-200/90'
-      } ${
-        isOverlay
+        } ${isOverlay
           ? 'scale-105 shadow-2xl ring-2 ring-[#E42358] z-50 rotate-1 border-[#E42358]'
           : ''
-      }`}
+        }`}
     >
-      {/* 1. Header do Card: Prioridade / Status + Valor Ponderado */}
+      {/* 1. Header do Card: Código do Card (Supabase) / Status + Valor Ponderado */}
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-1.5">
-          {/* Badge de Prioridade AllDot */}
-          <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 font-mono tracking-tight group-hover:bg-[#FFF0F3] group-hover:text-[#E42358] transition-colors">
+          {/* Código do Card vindo do Supabase */}
+          <span
+            title={`Código do Card: ${codigoCard} (ID: ${negocio.id})`}
+            className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 font-mono tracking-tight group-hover:bg-[#FFF0F3] group-hover:text-[#E42358] transition-colors"
+          >
             <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-500" />
-            <span>P1</span>
+            <span>{codigoCard}</span>
           </span>
 
           {/* Indicador de Estagnação / Risco */}
@@ -178,13 +183,12 @@ export function KanbanCard({
         {/* Atividade Status Pill */}
         {atividadePrincipal ? (
           <div
-            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-medium max-w-[75%] truncate border ${
-              statusAtividade === 'atrasada'
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-medium max-w-[75%] truncate border ${statusAtividade === 'atrasada'
                 ? 'bg-rose-50 border-rose-200 text-rose-700'
                 : statusAtividade === 'hoje'
-                ? 'bg-amber-50 border-amber-200 text-amber-800 font-semibold'
-                : 'bg-slate-50 border-slate-200 text-slate-700'
-            }`}
+                  ? 'bg-amber-50 border-amber-200 text-amber-800 font-semibold'
+                  : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}
           >
             {statusAtividade === 'atrasada' ? (
               <Clock className="h-3 w-3 shrink-0 text-rose-600 animate-pulse" />

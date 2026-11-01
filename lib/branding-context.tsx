@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { buscarBrandingDoBanco, salvarBrandingNoBanco } from '@/lib/supabase/service';
 
 export interface BrandingConfig {
   empresaNome: string;
@@ -171,7 +172,7 @@ export function CustomBrandingProvider({ children }: { children: React.ReactNode
   const [branding, setBranding] = React.useState<BrandingConfig>(BRANDING_DEFAULT);
   const [carregado, setCarregado] = React.useState(false);
 
-  // Carrega do LocalStorage na montagem
+  // Carrega primeiro do cache imediato e em seguida sincroniza do Supabase
   React.useEffect(() => {
     try {
       const salvo = localStorage.getItem(STORAGE_KEY);
@@ -180,10 +181,22 @@ export function CustomBrandingProvider({ children }: { children: React.ReactNode
         setBranding({ ...BRANDING_DEFAULT, ...parsed });
       }
     } catch (e) {
-      console.warn('Erro ao carregar branding customizado:', e);
-    } finally {
-      setCarregado(true);
+      console.warn('Erro ao carregar branding local:', e);
     }
+
+    buscarBrandingDoBanco()
+      .then((remoto) => {
+        if (remoto && typeof remoto === 'object') {
+          const mesclado = { ...BRANDING_DEFAULT, ...remoto };
+          setBranding(mesclado);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(mesclado));
+          } catch (e) {}
+        }
+      })
+      .finally(() => {
+        setCarregado(true);
+      });
   }, []);
 
   // Aplica as variáveis CSS dinâmicas globalmente no documento
@@ -207,31 +220,39 @@ export function CustomBrandingProvider({ children }: { children: React.ReactNode
     root.style.setProperty('--primary', hexParaHsl(corPrimaria));
     root.style.setProperty('--ring', corPrimaria);
 
-    // Salva no localStorage quando alterado pelo usuário
+    // Salva no Supabase e cache local quando alterado pelo usuário
     if (carregado) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(branding));
-      } catch (err) {
-        console.warn('Não foi possível persistir branding no localStorage:', err);
-      }
+      } catch (err) {}
+      salvarBrandingNoBanco(branding);
     }
   }, [branding, carregado]);
 
   const atualizarBranding = React.useCallback((novosDados: Partial<BrandingConfig>) => {
-    setBranding((prev) => ({ ...prev, ...novosDados }));
+    setBranding((prev) => {
+      const proximo = { ...prev, ...novosDados };
+      salvarBrandingNoBanco(proximo);
+      return proximo;
+    });
   }, []);
 
   const aplicarPaleta = React.useCallback((paleta: PaletaPredefinida) => {
-    setBranding((prev) => ({
-      ...prev,
-      corPrimaria: paleta.corPrimaria,
-      corSidebar: paleta.corSidebar,
-      corTopbar: paleta.corTopbar,
-    }));
+    setBranding((prev) => {
+      const proximo = {
+        ...prev,
+        corPrimaria: paleta.corPrimaria,
+        corSidebar: paleta.corSidebar,
+        corTopbar: paleta.corTopbar,
+      };
+      salvarBrandingNoBanco(proximo);
+      return proximo;
+    });
   }, []);
 
   const redefinirPadrao = React.useCallback(() => {
     setBranding(BRANDING_DEFAULT);
+    salvarBrandingNoBanco(BRANDING_DEFAULT);
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (e) {}

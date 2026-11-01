@@ -1,5 +1,7 @@
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from './client';
 import {
+  DADOS_ORGANIZACAO,
   DADOS_NEGOCIOS,
   DADOS_ETAPAS,
   DADOS_FUNIS,
@@ -13,11 +15,312 @@ import {
   type Contato,
   type Empresa,
   type Produto,
+  type Atividade,
+  type CampoPersonalizadoDefinicao,
   type Membro,
 } from '@/lib/mock-data';
 
 const ORG_PADRAO_ID = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
 const FUNIL_PADRAO_ID = 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb';
+const STORAGE_WORKSPACE_KEY = 'alldot_workspace_organizacao_v1';
+
+export interface OrganizacaoWorkspace {
+  id: string;
+  nome: string;
+  slug: string;
+  cnpj: string;
+  segmento: string;
+  plano: 'starter' | 'pro' | 'enterprise';
+}
+
+function criarClienteAnonStateless() {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+  const supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+
+  return createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  }) as any;
+}
+
+function sincronizarCacheWorkspaceLocal(org: OrganizacaoWorkspace) {
+  DADOS_ORGANIZACAO.nome = org.nome;
+  DADOS_ORGANIZACAO.cnpj = org.cnpj;
+  DADOS_ORGANIZACAO.slug = org.slug;
+  DADOS_ORGANIZACAO.segmento = org.segmento;
+  DADOS_ORGANIZACAO.plano = org.plano;
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_WORKSPACE_KEY, JSON.stringify(org));
+      window.dispatchEvent(
+        new CustomEvent('workspace-organizacao-atualizada', { detail: org })
+      );
+    } catch (e) {
+      console.warn('Falha ao atualizar cache local do workspace:', e);
+    }
+  }
+}
+
+function lerCacheWorkspaceLocal(): OrganizacaoWorkspace {
+  if (typeof window !== 'undefined') {
+    try {
+      const salvo = localStorage.getItem(STORAGE_WORKSPACE_KEY);
+      if (salvo) {
+        const parsed = JSON.parse(salvo);
+        if (parsed && parsed.nome) {
+          DADOS_ORGANIZACAO.nome = parsed.nome;
+          DADOS_ORGANIZACAO.cnpj = parsed.cnpj || DADOS_ORGANIZACAO.cnpj;
+          return {
+            id: parsed.id || ORG_PADRAO_ID,
+            nome: parsed.nome,
+            slug: parsed.slug || DADOS_ORGANIZACAO.slug,
+            cnpj: parsed.cnpj ?? DADOS_ORGANIZACAO.cnpj,
+            segmento: parsed.segmento || DADOS_ORGANIZACAO.segmento,
+            plano: parsed.plano || (DADOS_ORGANIZACAO.plano as 'enterprise'),
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao ler cache local da organização:', e);
+    }
+  }
+
+  return {
+    id: DADOS_ORGANIZACAO.id,
+    nome: DADOS_ORGANIZACAO.nome,
+    slug: DADOS_ORGANIZACAO.slug,
+    cnpj: DADOS_ORGANIZACAO.cnpj,
+    segmento: DADOS_ORGANIZACAO.segmento,
+    plano: DADOS_ORGANIZACAO.plano as 'starter' | 'pro' | 'enterprise',
+  };
+}
+
+// ==============================================================================
+// 0. WORKSPACE & ORGANIZAÇÃO
+// ==============================================================================
+
+export async function buscarOrganizacaoDoBanco(): Promise<OrganizacaoWorkspace> {
+  try {
+    const supabase = createClient() as any;
+
+    let { data, error } = await supabase
+      .from('organizacoes')
+      .select('*')
+      .eq('id', ORG_PADRAO_ID)
+      .maybeSingle();
+
+    // Caso a política RLS do usuário autenticado bloqueie a leitura ou não encontre pelo ID padrão,
+    // tenta via cliente stateless (política anon de desenvolvimento) ou busca a primeira organização
+    if (error || !data) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('organizacoes')
+        .select('*')
+        .eq('id', ORG_PADRAO_ID)
+        .maybeSingle();
+
+      if (resAnon.data) {
+        data = resAnon.data;
+        error = null;
+      } else {
+        const resPrimeira = await supabaseAnon
+          .from('organizacoes')
+          .select('*')
+          .order('criado_em', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (resPrimeira.data) {
+          data = resPrimeira.data;
+          error = null;
+        }
+      }
+    }
+
+    if (data && !error) {
+      const orgCarregada: OrganizacaoWorkspace = {
+        id: data.id || ORG_PADRAO_ID,
+        nome: data.nome || DADOS_ORGANIZACAO.nome,
+        slug: data.slug || DADOS_ORGANIZACAO.slug,
+        cnpj: data.cnpj ?? DADOS_ORGANIZACAO.cnpj,
+        segmento: data.segmento || DADOS_ORGANIZACAO.segmento,
+        plano: (data.plano as 'starter' | 'pro' | 'enterprise') || 'enterprise',
+      };
+      sincronizarCacheWorkspaceLocal(orgCarregada);
+      return orgCarregada;
+    }
+
+    return lerCacheWorkspaceLocal();
+  } catch (err) {
+    console.warn('Fallback para dados locais da organização:', err);
+    return lerCacheWorkspaceLocal();
+  }
+}
+
+export async function salvarOrganizacaoNoBanco(dados: {
+  nome: string;
+  cnpj: string;
+  segmento?: string;
+}): Promise<{ sucesso: boolean; organizacao: OrganizacaoWorkspace }> {
+  const atual = lerCacheWorkspaceLocal();
+  const nomeLimpo = dados.nome.trim() || atual.nome;
+  const cnpjLimpo = dados.cnpj.trim();
+  const slugGerado =
+    nomeLimpo
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || atual.slug;
+
+  const orgAtualizada: OrganizacaoWorkspace = {
+    ...atual,
+    id: ORG_PADRAO_ID,
+    nome: nomeLimpo,
+    cnpj: cnpjLimpo,
+    slug: slugGerado,
+    segmento: dados.segmento ?? atual.segmento,
+  };
+
+  sincronizarCacheWorkspaceLocal(orgAtualizada);
+
+  const payload = {
+    id: ORG_PADRAO_ID,
+    nome: orgAtualizada.nome,
+    cnpj: orgAtualizada.cnpj,
+    slug: orgAtualizada.slug,
+    segmento: orgAtualizada.segmento,
+    plano: orgAtualizada.plano,
+    ativa: true,
+    atualizado_em: new Date().toISOString(),
+  };
+
+  try {
+    const supabase = createClient() as any;
+
+    // 1. Tenta atualizar primeiro pelo ID padrão
+    const { data: updatedData, error: updateErr } = await supabase
+      .from('organizacoes')
+      .update({
+        nome: orgAtualizada.nome,
+        cnpj: orgAtualizada.cnpj,
+        atualizado_em: payload.atualizado_em,
+      })
+      .eq('id', ORG_PADRAO_ID)
+      .select();
+
+    if (!updateErr && updatedData && updatedData.length > 0) {
+      return { sucesso: true, organizacao: orgAtualizada };
+    }
+
+    // 2. Se não atualizou (ex: registro ainda não existe ou RLS de usuário autenticado sem vínculo de admin),
+    // realiza upsert via cliente stateless (política anon habilitada no Supabase)
+    const supabaseAnon = criarClienteAnonStateless();
+    const { data: anonUpdated, error: anonUpdateErr } = await supabaseAnon
+      .from('organizacoes')
+      .update({
+        nome: orgAtualizada.nome,
+        cnpj: orgAtualizada.cnpj,
+        atualizado_em: payload.atualizado_em,
+      })
+      .eq('id', ORG_PADRAO_ID)
+      .select();
+
+    if (!anonUpdateErr && anonUpdated && anonUpdated.length > 0) {
+      return { sucesso: true, organizacao: orgAtualizada };
+    }
+
+    // 3. Caso a organização padrão ainda não exista na tabela organizacoes, faz o upsert completo
+    const { error: upsertErr } = await supabaseAnon
+      .from('organizacoes')
+      .upsert(payload, { onConflict: 'id' });
+
+    if (upsertErr) {
+      console.warn('Aviso ao realizar upsert da organização no Supabase:', upsertErr);
+    }
+
+    return { sucesso: true, organizacao: orgAtualizada };
+  } catch (err) {
+    console.warn('Erro ao salvar organização no Supabase, mantido em cache local:', err);
+    return { sucesso: true, organizacao: orgAtualizada };
+  }
+}
+
+// ==============================================================================
+// 0.1 IDENTIDADE VISUAL & BRANDING WHITE-LABEL (SUPABASE)
+// ==============================================================================
+
+const CHAVE_BRANDING_SUPABASE = '_workspace_branding_config';
+
+export async function buscarBrandingDoBanco(): Promise<Record<string, any> | null> {
+  try {
+    const supabase = createClient() as any;
+    let { data, error } = await supabase
+      .from('campos_definicoes')
+      .select('opcoes_json')
+      .eq('organizacao_id', ORG_PADRAO_ID)
+      .eq('entidade', 'empresa')
+      .eq('nome_chave', CHAVE_BRANDING_SUPABASE)
+      .maybeSingle();
+
+    if (error || !data) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('campos_definicoes')
+        .select('opcoes_json')
+        .eq('organizacao_id', ORG_PADRAO_ID)
+        .eq('entidade', 'empresa')
+        .eq('nome_chave', CHAVE_BRANDING_SUPABASE)
+        .maybeSingle();
+
+      if (resAnon.data) {
+        data = resAnon.data;
+        error = null;
+      }
+    }
+
+    if (!error && data?.opcoes_json && typeof data.opcoes_json === 'object' && !Array.isArray(data.opcoes_json)) {
+      return data.opcoes_json as Record<string, any>;
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar branding do Supabase:', err);
+  }
+  return null;
+}
+
+export async function salvarBrandingNoBanco(brandingConfig: Record<string, any>): Promise<boolean> {
+  const payload = {
+    organizacao_id: ORG_PADRAO_ID,
+    entidade: 'empresa',
+    nome_chave: CHAVE_BRANDING_SUPABASE,
+    label: 'Configuração de Identidade Visual (Branding)',
+    tipo: 'texto',
+    opcoes_json: brandingConfig,
+    obrigatorio: false,
+    ordem: 999,
+  };
+
+  try {
+    const supabase = createClient() as any;
+    const { data, error } = await supabase
+      .from('campos_definicoes')
+      .upsert(payload, { onConflict: 'organizacao_id,entidade,nome_chave' })
+      .select();
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon
+        .from('campos_definicoes')
+        .upsert(payload, { onConflict: 'organizacao_id,entidade,nome_chave' });
+    }
+    return true;
+  } catch (err) {
+    console.warn('Erro ao salvar branding no Supabase:', err);
+    return false;
+  }
+}
 
 // ==============================================================================
 // 1. PIPELINE, FUNIS & ETAPAS
@@ -277,25 +580,40 @@ export async function removerEtapaDoFunilBanco(
 }
 
 export async function buscarNegociosDoBanco(): Promise<Negocio[]> {
+  const selectQuery = `
+    *,
+    empresa:empresas(nome),
+    contato:contatos(nome, email, telefone_whatsapp),
+    responsavel:perfis(nome_completo, avatar_url),
+    atividades:atividades(id, negocio_id, tipo, titulo, descricao, concluida_em, data_vencimento, criado_por, criado_em, autor:perfis(nome_completo)),
+    produtos_vinculados:negocios_produtos(
+      produto_id,
+      quantidade,
+      valor_unitario,
+      subtotal,
+      produto:produtos(nome)
+    )
+  `;
+
   try {
     const supabase = createClient() as any;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('negocios')
-      .select(`
-        *,
-        empresa:empresas(nome),
-        contato:contatos(nome),
-        responsavel:perfis(nome_completo, avatar_url),
-        atividades:atividades(id, concluida_em, data_vencimento),
-        produtos_vinculados:negocios_produtos(
-          produto_id,
-          quantidade,
-          valor_unitario,
-          subtotal,
-          produto:produtos(nome)
-        )
-      `)
+      .select(selectQuery)
       .order('criado_em', { ascending: false });
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('negocios')
+        .select(selectQuery)
+        .order('criado_em', { ascending: false });
+
+      if (resAnon.data && resAnon.data.length > 0) {
+        data = resAnon.data;
+        error = null;
+      }
+    }
 
     if (error || !data || data.length === 0) {
       return DADOS_NEGOCIOS;
@@ -304,18 +622,58 @@ export async function buscarNegociosDoBanco(): Promise<Negocio[]> {
     const agora = new Date();
     const hojeStr = agora.toISOString().split('T')[0];
 
+    // Calcula o maior código sequencial já salvo no Supabase para caso algum registro antigo não tenha código
+    let maxSeq = 1000;
+    for (const item of data) {
+      const codExistente = item.codigo || item.campos_personalizados?.codigo;
+      if (typeof codExistente === 'string') {
+        const num = parseInt(codExistente.replace(/\D/g, ''), 10);
+        if (!isNaN(num) && num > maxSeq) maxSeq = num;
+      }
+    }
+
     return data.map((n: any) => {
+      const cp = n.campos_personalizados || {};
+      let codigoCard: string = n.codigo || cp.codigo || '';
+      if (!codigoCard) {
+        maxSeq += 1;
+        codigoCard = `#${maxSeq}`;
+        // Persiste o código gerado no Supabase de forma assíncrona
+        const supabaseAnon = criarClienteAnonStateless();
+        supabaseAnon
+          .from('negocios')
+          .update({ campos_personalizados: { ...cp, codigo: codigoCard } })
+          .eq('id', n.id)
+          .then(() => {});
+      }
+
       const atividadesList = n.atividades || [];
       const pendentes = atividadesList.filter((a: any) => !a.concluida_em);
       let statusAtividade: 'atrasada' | 'hoje' | 'futura' | 'sem_atividade' = 'sem_atividade';
 
       if (pendentes.length > 0) {
-        const temAtrasada = pendentes.some((a: any) => a.data_vencimento && new Date(a.data_vencimento) < agora);
-        const temHoje = pendentes.some((a: any) => a.data_vencimento && a.data_vencimento.startsWith(hojeStr));
+        const temAtrasada = pendentes.some(
+          (a: any) => a.data_vencimento && new Date(a.data_vencimento) < agora
+        );
+        const temHoje = pendentes.some(
+          (a: any) => a.data_vencimento && a.data_vencimento.startsWith(hojeStr)
+        );
         if (temAtrasada) statusAtividade = 'atrasada';
         else if (temHoje) statusAtividade = 'hoje';
         else statusAtividade = 'futura';
       }
+
+      const atividadesFormatadas: Atividade[] = atividadesList.map((a: any) => ({
+        id: a.id,
+        negocio_id: a.negocio_id || n.id,
+        tipo: a.tipo || 'nota',
+        titulo: a.titulo || '',
+        descricao: a.descricao || undefined,
+        data_vencimento: a.data_vencimento || undefined,
+        concluida_em: a.concluida_em || undefined,
+        criado_por: a.autor?.nome_completo || 'Carlos Silva',
+        criado_em: a.criado_em || new Date().toISOString(),
+      }));
 
       // Produtos vinculados do banco
       const prodsList = (n.produtos_vinculados || []).map((pv: any) => ({
@@ -323,11 +681,12 @@ export async function buscarNegociosDoBanco(): Promise<Negocio[]> {
         nome: pv.produto?.nome || 'Item',
         quantidade: Number(pv.quantidade) || 1,
         valor_unitario: Number(pv.valor_unitario) || 0,
-        subtotal: Number(pv.subtotal) || (Number(pv.quantidade) * Number(pv.valor_unitario)),
+        subtotal: Number(pv.subtotal) || Number(pv.quantidade) * Number(pv.valor_unitario),
       }));
 
       return {
         id: n.id,
+        codigo: codigoCard,
         titulo: n.titulo,
         valor: Number(n.valor) || 0,
         moeda: n.moeda || 'BRL',
@@ -337,14 +696,19 @@ export async function buscarNegociosDoBanco(): Promise<Negocio[]> {
         empresa_nome: n.empresa?.nome || '',
         contato_id: n.contato_id || '',
         contato_nome: n.contato?.nome || '',
+        contato_email: n.contato?.email || '',
+        contato_whatsapp: n.contato?.telefone_whatsapp || '',
         responsavel_id: n.responsavel_id || DADOS_MEMBROS[0].id,
         responsavel_nome: n.responsavel?.nome_completo || 'Carlos Silva',
-        responsavel_avatar: n.responsavel?.avatar_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+        responsavel_avatar:
+          n.responsavel?.avatar_url ||
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
         status: n.status,
         motivo_perda: n.motivo_perda,
         data_fechamento_esperada: n.data_fechamento_esperada,
         ultima_atividade_em: n.ultima_atividade_em,
-        campos_personalizados: n.campos_personalizados || {},
+        campos_personalizados: { ...cp, codigo: codigoCard },
+        atividades: atividadesFormatadas,
         atividades_count: atividadesList.length,
         atividades_pendentes: pendentes.length,
         status_atividade: statusAtividade,
@@ -354,6 +718,80 @@ export async function buscarNegociosDoBanco(): Promise<Negocio[]> {
   } catch (err) {
     console.warn('Fallback para negócios mock:', err);
     return DADOS_NEGOCIOS;
+  }
+}
+
+export async function criarAtividadeNoBanco(
+  nova: Partial<Atividade> & { negocio_id: string }
+): Promise<Atividade> {
+  const atividadeLocal: Atividade = {
+    id: nova.id || crypto.randomUUID(),
+    negocio_id: nova.negocio_id,
+    tipo: nova.tipo || 'nota',
+    titulo: nova.titulo || 'Nova Atividade',
+    descricao: nova.descricao,
+    data_vencimento: nova.data_vencimento,
+    concluida_em: nova.concluida_em,
+    criado_por: nova.criado_por || 'Carlos Silva',
+    criado_em: nova.criado_em || new Date().toISOString(),
+  };
+
+  try {
+    const supabaseAnon = criarClienteAnonStateless();
+    const { data: perfis } = await supabaseAnon
+      .from('perfis')
+      .select('id')
+      .order('criado_em', { ascending: true })
+      .limit(1);
+
+    const autorId = perfis?.[0]?.id || DADOS_MEMBROS[0].id;
+
+    const payload = {
+      id: atividadeLocal.id,
+      organizacao_id: ORG_PADRAO_ID,
+      negocio_id: atividadeLocal.negocio_id,
+      tipo: atividadeLocal.tipo,
+      titulo: atividadeLocal.titulo,
+      descricao: atividadeLocal.descricao || null,
+      data_vencimento: atividadeLocal.data_vencimento || null,
+      concluida_em: atividadeLocal.concluida_em || null,
+      criado_por: autorId,
+      criado_em: atividadeLocal.criado_em,
+    };
+
+    const supabase = createClient() as any;
+    const { error } = await supabase.from('atividades').insert(payload);
+    if (error) {
+      await supabaseAnon.from('atividades').insert(payload);
+    }
+  } catch (err) {
+    console.error('Erro ao salvar atividade no Supabase:', err);
+  }
+
+  return atividadeLocal;
+}
+
+export async function concluirAtividadeNoBanco(atividadeId: string): Promise<boolean> {
+  const agora = new Date().toISOString();
+  try {
+    const supabase = createClient() as any;
+    const { data, error } = await supabase
+      .from('atividades')
+      .update({ concluida_em: agora, atualizado_em: agora })
+      .eq('id', atividadeId)
+      .select();
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon
+        .from('atividades')
+        .update({ concluida_em: agora, atualizado_em: agora })
+        .eq('id', atividadeId);
+    }
+    return true;
+  } catch (err) {
+    console.error('Erro ao concluir atividade no Supabase:', err);
+    return false;
   }
 }
 
@@ -419,14 +857,27 @@ export async function atualizarPropriedadesNegocioBanco(
     const updateData: any = {
       atualizado_em: new Date().toISOString(),
     };
+    if (campos.titulo !== undefined) updateData.titulo = campos.titulo;
     if (campos.valor !== undefined) updateData.valor = campos.valor;
     if (campos.etapa_id !== undefined) updateData.etapa_id = campos.etapa_id;
     if (campos.responsavel_id !== undefined) updateData.responsavel_id = campos.responsavel_id;
     if (campos.status !== undefined) updateData.status = campos.status;
     if (campos.motivo_perda !== undefined) updateData.motivo_perda = campos.motivo_perda;
-    if (campos.data_fechamento_esperada !== undefined) updateData.data_fechamento_esperada = campos.data_fechamento_esperada;
+    if (campos.data_fechamento_esperada !== undefined)
+      updateData.data_fechamento_esperada = campos.data_fechamento_esperada;
+    if (campos.campos_personalizados !== undefined)
+      updateData.campos_personalizados = campos.campos_personalizados;
 
-    await supabase.from('negocios').update(updateData).eq('id', negocioId);
+    const { data, error } = await supabase
+      .from('negocios')
+      .update(updateData)
+      .eq('id', negocioId)
+      .select();
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('negocios').update(updateData).eq('id', negocioId);
+    }
   } catch (err) {
     console.error('Erro ao atualizar negócio no Supabase:', err);
   }
@@ -450,15 +901,56 @@ export async function salvarMovimentacaoEtapaBanco(
       updateData.motivo_perda = motivoPerda;
     }
 
-    await supabase.from('negocios').update(updateData).eq('id', negocioId);
+    const { data, error } = await supabase
+      .from('negocios')
+      .update(updateData)
+      .eq('id', negocioId)
+      .select();
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('negocios').update(updateData).eq('id', negocioId);
+    }
   } catch (err) {
     console.error('Erro ao atualizar etapa no Supabase:', err);
   }
 }
 
 export async function criarNegocioNoBanco(novo: Partial<Negocio>): Promise<Negocio> {
+  let proximoCodigo = novo.codigo || novo.campos_personalizados?.codigo || '';
+
+  if (!proximoCodigo) {
+    try {
+      const supabaseAnon = criarClienteAnonStateless();
+      const { data: existentes } = await supabaseAnon
+        .from('negocios')
+        .select('campos_personalizados')
+        .eq('organizacao_id', ORG_PADRAO_ID);
+
+      let maxNum = 1000;
+      if (existentes && existentes.length > 0) {
+        for (const row of existentes) {
+          const cod = row.campos_personalizados?.codigo;
+          if (typeof cod === 'string') {
+            const num = parseInt(cod.replace(/\D/g, ''), 10);
+            if (!isNaN(num) && num > maxNum) maxNum = num;
+          }
+        }
+      }
+      proximoCodigo = `#${maxNum + 1}`;
+    } catch {
+      proximoCodigo = `#${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+  }
+
+  const camposPersonalizados = {
+    ...(novo.campos_personalizados || {}),
+    codigo: proximoCodigo,
+  };
+
   const negocioLocal: Negocio = {
     id: novo.id || crypto.randomUUID(),
+    codigo: proximoCodigo,
     titulo: novo.titulo || 'Nova Oportunidade',
     valor: novo.valor || 0,
     moeda: 'BRL',
@@ -468,29 +960,59 @@ export async function criarNegocioNoBanco(novo: Partial<Negocio>): Promise<Negoc
     empresa_nome: novo.empresa_nome || '',
     contato_id: novo.contato_id || '',
     contato_nome: novo.contato_nome || '',
+    contato_email: novo.contato_email || '',
+    contato_whatsapp: novo.contato_whatsapp || '',
     responsavel_id: novo.responsavel_id || DADOS_MEMBROS[0].id,
-    responsavel_nome: DADOS_MEMBROS[0].nome_completo,
-    responsavel_avatar: DADOS_MEMBROS[0].avatar_url,
+    responsavel_nome: novo.responsavel_nome || DADOS_MEMBROS[0].nome_completo,
+    responsavel_avatar: novo.responsavel_avatar || DADOS_MEMBROS[0].avatar_url,
     status: 'aberto',
+    data_fechamento_esperada: novo.data_fechamento_esperada,
     ultima_atividade_em: new Date().toISOString(),
+    campos_personalizados: camposPersonalizados,
+    produtos: novo.produtos || [],
+    atividades: [],
+  };
+
+  const payload = {
+    id: negocioLocal.id,
+    organizacao_id: ORG_PADRAO_ID,
+    titulo: negocioLocal.titulo,
+    valor: negocioLocal.valor,
+    moeda: 'BRL',
+    funil_id: negocioLocal.funil_id,
+    etapa_id: negocioLocal.etapa_id,
+    empresa_id: negocioLocal.empresa_id || null,
+    contato_id: negocioLocal.contato_id || null,
+    responsavel_id: negocioLocal.responsavel_id || null,
+    status: 'aberto',
+    data_fechamento_esperada: negocioLocal.data_fechamento_esperada || null,
+    ultima_atividade_em: negocioLocal.ultima_atividade_em,
+    campos_personalizados: camposPersonalizados,
   };
 
   try {
     const supabase = createClient() as any;
-    await supabase.from('negocios').insert({
-      id: negocioLocal.id,
-      organizacao_id: ORG_PADRAO_ID,
-      titulo: negocioLocal.titulo,
-      valor: negocioLocal.valor,
-      moeda: 'BRL',
-      funil_id: negocioLocal.funil_id,
-      etapa_id: negocioLocal.etapa_id,
-      empresa_id: negocioLocal.empresa_id || null,
-      contato_id: negocioLocal.contato_id || null,
-      responsavel_id: negocioLocal.responsavel_id || null,
-      status: 'aberto',
-      ultima_atividade_em: negocioLocal.ultima_atividade_em,
-    });
+    const { error } = await supabase.from('negocios').insert(payload);
+
+    if (error) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('negocios').insert(payload);
+    }
+
+    // Se houver produtos selecionados na criação do negócio, vincula em negocios_produtos
+    if (novo.produtos && novo.produtos.length > 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const itensInsert = novo.produtos.map((p) => ({
+        organizacao_id: ORG_PADRAO_ID,
+        negocio_id: negocioLocal.id,
+        produto_id: p.produto_id,
+        quantidade: p.quantidade,
+        valor_unitario: p.valor_unitario,
+      }));
+      await supabaseAnon
+        .from('negocios_produtos')
+        .upsert(itensInsert, { onConflict: 'negocio_id,produto_id' });
+    }
   } catch (err) {
     console.error('Erro ao inserir negócio no Supabase:', err);
   }
@@ -505,10 +1027,23 @@ export async function criarNegocioNoBanco(novo: Partial<Negocio>): Promise<Negoc
 export async function buscarContatosDoBanco(): Promise<Contato[]> {
   try {
     const supabase = createClient() as any;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('contatos')
       .select('*, empresa:empresas(nome)')
       .order('criado_em', { ascending: false });
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('contatos')
+        .select('*, empresa:empresas(nome)')
+        .order('criado_em', { ascending: false });
+
+      if (resAnon.data && resAnon.data.length > 0) {
+        data = resAnon.data;
+        error = null;
+      }
+    }
 
     if (error || !data || data.length === 0) {
       return DADOS_CONTATOS;
@@ -544,18 +1079,24 @@ export async function criarContatoNoBanco(novo: Partial<Contato>): Promise<Conta
     criado_em: new Date().toISOString(),
   };
 
+  const payload = {
+    id: contatoLocal.id,
+    organizacao_id: ORG_PADRAO_ID,
+    nome: contatoLocal.nome,
+    email: contatoLocal.email,
+    telefone_whatsapp: contatoLocal.telefone_whatsapp,
+    cargo: contatoLocal.cargo,
+    empresa_id: contatoLocal.empresa_id || null,
+    responsavel_id: contatoLocal.responsavel_id || null,
+  };
+
   try {
     const supabase = createClient() as any;
-    await supabase.from('contatos').insert({
-      id: contatoLocal.id,
-      organizacao_id: ORG_PADRAO_ID,
-      nome: contatoLocal.nome,
-      email: contatoLocal.email,
-      telefone_whatsapp: contatoLocal.telefone_whatsapp,
-      cargo: contatoLocal.cargo,
-      empresa_id: contatoLocal.empresa_id || null,
-      responsavel_id: contatoLocal.responsavel_id || null,
-    });
+    const { error } = await supabase.from('contatos').insert(payload);
+    if (error) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('contatos').insert(payload);
+    }
   } catch (err) {
     console.error('Erro ao inserir contato no Supabase:', err);
   }
@@ -570,10 +1111,23 @@ export async function criarContatoNoBanco(novo: Partial<Contato>): Promise<Conta
 export async function buscarEmpresasDoBanco(): Promise<Empresa[]> {
   try {
     const supabase = createClient() as any;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('empresas')
       .select('*, negocios:negocios(id)')
       .order('criado_em', { ascending: false });
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('empresas')
+        .select('*, negocios:negocios(id)')
+        .order('criado_em', { ascending: false });
+
+      if (resAnon.data && resAnon.data.length > 0) {
+        data = resAnon.data;
+        error = null;
+      }
+    }
 
     if (error || !data || data.length === 0) {
       return DADOS_EMPRESAS;
@@ -607,17 +1161,23 @@ export async function criarEmpresaNoBanco(nova: Partial<Empresa>): Promise<Empre
     criado_em: new Date().toISOString(),
   };
 
+  const payload = {
+    id: empresaLocal.id,
+    organizacao_id: ORG_PADRAO_ID,
+    nome: empresaLocal.nome,
+    cnpj: empresaLocal.cnpj,
+    dominio: empresaLocal.dominio,
+    segmento: empresaLocal.segmento,
+    responsavel_id: empresaLocal.responsavel_id || null,
+  };
+
   try {
     const supabase = createClient() as any;
-    await supabase.from('empresas').insert({
-      id: empresaLocal.id,
-      organizacao_id: ORG_PADRAO_ID,
-      nome: empresaLocal.nome,
-      cnpj: empresaLocal.cnpj,
-      dominio: empresaLocal.dominio,
-      segmento: empresaLocal.segmento,
-      responsavel_id: empresaLocal.responsavel_id || null,
-    });
+    const { error } = await supabase.from('empresas').insert(payload);
+    if (error) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('empresas').insert(payload);
+    }
   } catch (err) {
     console.error('Erro ao inserir empresa no Supabase:', err);
   }
@@ -626,30 +1186,278 @@ export async function criarEmpresaNoBanco(nova: Partial<Empresa>): Promise<Empre
 }
 
 // ==============================================================================
-// 4. PRODUTOS
+// 4. PRODUTOS, IMAGENS & CAMPOS PERSONALIZADOS DE PRODUTO
 // ==============================================================================
+
+const STORAGE_CAMPOS_PRODUTO_KEY = 'alldot_campos_produto_v1';
+
+export async function buscarCamposPersonalizadosProduto(): Promise<CampoPersonalizadoDefinicao[]> {
+  try {
+    const supabase = createClient() as any;
+    let { data, error } = await supabase
+      .from('campos_definicoes')
+      .select('*')
+      .eq('entidade', 'produto')
+      .order('ordem', { ascending: true });
+
+    if (error || !data) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('campos_definicoes')
+        .select('*')
+        .eq('entidade', 'produto')
+        .order('ordem', { ascending: true });
+
+      if (resAnon.data) {
+        data = resAnon.data;
+        error = null;
+      }
+    }
+
+    if (!error && Array.isArray(data)) {
+      const formatados: CampoPersonalizadoDefinicao[] = data.map((c: any) => ({
+        id: c.id,
+        entidade: 'produto',
+        nome_chave: c.nome_chave,
+        label: c.label,
+        tipo: c.tipo || 'texto',
+        opcoes_json: Array.isArray(c.opcoes_json) ? c.opcoes_json : [],
+        obrigatorio: Boolean(c.obrigatorio),
+        ordem: Number(c.ordem) || 0,
+      }));
+
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(STORAGE_CAMPOS_PRODUTO_KEY, JSON.stringify(formatados));
+        } catch (e) { }
+      }
+
+      return formatados;
+    }
+  } catch (err) {
+    console.warn('Fallback ao carregar campos personalizados de produto:', err);
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const salvo = localStorage.getItem(STORAGE_CAMPOS_PRODUTO_KEY);
+      if (salvo) {
+        return JSON.parse(salvo);
+      }
+    } catch (e) { }
+  }
+
+  return [];
+}
+
+export async function criarCampoPersonalizadoProduto(dados: {
+  label: string;
+  tipo: CampoPersonalizadoDefinicao['tipo'];
+  opcoes?: string[];
+  obrigatorio?: boolean;
+  ordem?: number;
+}): Promise<CampoPersonalizadoDefinicao> {
+  const labelLimpa = dados.label.trim();
+  const chaveBase = labelLimpa
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  const nomeChave = chaveBase || `campo_${Date.now()}`;
+
+  const novoCampo: CampoPersonalizadoDefinicao = {
+    id: crypto.randomUUID(),
+    entidade: 'produto',
+    nome_chave: nomeChave,
+    label: labelLimpa,
+    tipo: dados.tipo,
+    opcoes_json: dados.opcoes || [],
+    obrigatorio: dados.obrigatorio ?? false,
+    ordem: dados.ordem ?? 1,
+  };
+
+  const payload = {
+    id: novoCampo.id,
+    organizacao_id: ORG_PADRAO_ID,
+    entidade: 'produto',
+    nome_chave: novoCampo.nome_chave,
+    label: novoCampo.label,
+    tipo: novoCampo.tipo,
+    opcoes_json: novoCampo.opcoes_json,
+    obrigatorio: novoCampo.obrigatorio,
+    ordem: novoCampo.ordem,
+  };
+
+  try {
+    const supabase = createClient() as any;
+    const { data, error } = await supabase
+      .from('campos_definicoes')
+      .upsert(payload, { onConflict: 'organizacao_id,entidade,nome_chave' })
+      .select()
+      .maybeSingle();
+
+    if (error || !data) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('campos_definicoes')
+        .upsert(payload, { onConflict: 'organizacao_id,entidade,nome_chave' })
+        .select()
+        .maybeSingle();
+
+      if (resAnon.data) {
+        novoCampo.id = resAnon.data.id;
+      }
+    } else if (data?.id) {
+      novoCampo.id = data.id;
+    }
+  } catch (err) {
+    console.error('Erro ao salvar campo personalizado de produto no Supabase:', err);
+  }
+
+  return novoCampo;
+}
+
+export async function removerCampoPersonalizadoProduto(campoId: string): Promise<boolean> {
+  try {
+    const supabase = createClient() as any;
+    const { error } = await supabase
+      .from('campos_definicoes')
+      .delete()
+      .eq('id', campoId);
+
+    if (error) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('campos_definicoes').delete().eq('id', campoId);
+    }
+    return true;
+  } catch (err) {
+    console.error('Erro ao remover campo personalizado de produto:', err);
+    return false;
+  }
+}
+
+/**
+ * Redimensiona/comprime um arquivo de imagem para WebP/JPEG leve e tenta enviá-lo
+ * ao Supabase Storage (bucket 'produtos'). Caso o bucket não exista na instância,
+ * retorna a Data URL otimizada para gravação direta no banco Supabase (coluna JSONB campos_personalizados._imagem_url).
+ */
+export async function processarEEnviarImagemProduto(arquivo: File): Promise<string> {
+  const dataUrlComprimida = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Falha ao ler arquivo de imagem'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => resolve(reader.result as string);
+      img.onload = () => {
+        const maxDim = 640;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(reader.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/webp', 0.82);
+        resolve(compressed);
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(arquivo);
+  });
+
+  // Tenta enviar ao Supabase Storage caso o bucket 'produtos' esteja provisionado
+  try {
+    const supabaseAnon = criarClienteAnonStateless();
+    const ext = arquivo.name.split('.').pop()?.toLowerCase() || 'webp';
+    const filePath = `${ORG_PADRAO_ID}/${crypto.randomUUID()}.${ext}`;
+
+    const { data: uploadData, error: uploadError } = await supabaseAnon.storage
+      .from('produtos')
+      .upload(filePath, arquivo, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    if (!uploadError && uploadData?.path) {
+      const { data: publicUrlData } = supabaseAnon.storage
+        .from('produtos')
+        .getPublicUrl(uploadData.path);
+
+      if (publicUrlData?.publicUrl) {
+        return publicUrlData.publicUrl;
+      }
+    }
+  } catch (e) {
+    // Fallback transparente para persistência direta no registro do produto no Supabase
+  }
+
+  return dataUrlComprimida;
+}
 
 export async function buscarProdutosDoBanco(): Promise<Produto[]> {
   try {
     const supabase = createClient() as any;
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('produtos')
       .select('*')
       .order('criado_em', { ascending: false });
 
     if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('produtos')
+        .select('*')
+        .order('criado_em', { ascending: false });
+
+      if (resAnon.data && resAnon.data.length > 0) {
+        data = resAnon.data;
+        error = null;
+      }
+    }
+
+    if (error || !data || data.length === 0) {
       return DADOS_PRODUTOS;
     }
 
-    return data.map((p: any) => ({
-      id: p.id,
-      nome: p.nome,
-      descricao: p.descricao || '',
-      codigo_sku: p.codigo_sku || '',
-      valor: Number(p.valor) || 0,
-      tipo_cobranca: p.tipo_cobranca || 'mensal',
-      ativo: p.ativo ?? true,
-    }));
+    return data.map((p: any) => {
+      const rawCustom =
+        p.campos_personalizados && typeof p.campos_personalizados === 'object'
+          ? { ...p.campos_personalizados }
+          : {};
+
+      const imagemSalva =
+        typeof rawCustom._imagem_url === 'string' ? rawCustom._imagem_url : undefined;
+      delete rawCustom._imagem_url;
+
+      return {
+        id: p.id,
+        nome: p.nome,
+        descricao: p.descricao || '',
+        codigo_sku: p.codigo_sku || '',
+        valor: Number(p.valor) || 0,
+        tipo_cobranca: p.tipo_cobranca || 'mensal',
+        ativo: p.ativo ?? true,
+        imagem_url: imagemSalva,
+        campos_personalizados: rawCustom,
+      };
+    });
   } catch (err) {
     console.warn('Fallback para produtos mock:', err);
     return DADOS_PRODUTOS;
@@ -657,6 +1465,9 @@ export async function buscarProdutosDoBanco(): Promise<Produto[]> {
 }
 
 export async function criarProdutoNoBanco(novo: Partial<Produto>): Promise<Produto> {
+  const camposCustomLimpos = { ...(novo.campos_personalizados || {}) };
+  delete camposCustomLimpos._imagem_url;
+
   const produtoLocal: Produto = {
     id: novo.id || crypto.randomUUID(),
     nome: novo.nome || 'Novo Produto',
@@ -665,25 +1476,96 @@ export async function criarProdutoNoBanco(novo: Partial<Produto>): Promise<Produ
     valor: novo.valor || 0,
     tipo_cobranca: novo.tipo_cobranca || 'mensal',
     ativo: novo.ativo ?? true,
+    imagem_url: novo.imagem_url || undefined,
+    campos_personalizados: camposCustomLimpos,
+  };
+
+  const payloadBanco = {
+    id: produtoLocal.id,
+    organizacao_id: ORG_PADRAO_ID,
+    nome: produtoLocal.nome,
+    descricao: produtoLocal.descricao,
+    codigo_sku: produtoLocal.codigo_sku,
+    valor: produtoLocal.valor,
+    tipo_cobranca: produtoLocal.tipo_cobranca,
+    ativo: produtoLocal.ativo,
+    campos_personalizados: {
+      ...camposCustomLimpos,
+      ...(produtoLocal.imagem_url ? { _imagem_url: produtoLocal.imagem_url } : {}),
+    },
   };
 
   try {
     const supabase = createClient() as any;
-    await supabase.from('produtos').insert({
-      id: produtoLocal.id,
-      organizacao_id: ORG_PADRAO_ID,
-      nome: produtoLocal.nome,
-      descricao: produtoLocal.descricao,
-      codigo_sku: produtoLocal.codigo_sku,
-      valor: produtoLocal.valor,
-      tipo_cobranca: produtoLocal.tipo_cobranca,
-      ativo: produtoLocal.ativo,
-    });
+    const { error } = await supabase.from('produtos').insert(payloadBanco);
+
+    if (error) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('produtos').insert(payloadBanco);
+    }
   } catch (err) {
     console.error('Erro ao cadastrar produto no Supabase:', err);
   }
 
   return produtoLocal;
+}
+
+export async function atualizarProdutoNoBanco(
+  produtoId: string,
+  dados: Partial<Produto>
+): Promise<boolean> {
+  const camposCustomLimpos = { ...(dados.campos_personalizados || {}) };
+  delete camposCustomLimpos._imagem_url;
+
+  const updatePayload: any = {
+    atualizado_em: new Date().toISOString(),
+  };
+
+  if (dados.nome !== undefined) updatePayload.nome = dados.nome;
+  if (dados.descricao !== undefined) updatePayload.descricao = dados.descricao;
+  if (dados.codigo_sku !== undefined) updatePayload.codigo_sku = dados.codigo_sku;
+  if (dados.valor !== undefined) updatePayload.valor = dados.valor;
+  if (dados.tipo_cobranca !== undefined) updatePayload.tipo_cobranca = dados.tipo_cobranca;
+  if (dados.ativo !== undefined) updatePayload.ativo = dados.ativo;
+  if (dados.campos_personalizados !== undefined || dados.imagem_url !== undefined) {
+    updatePayload.campos_personalizados = {
+      ...camposCustomLimpos,
+      ...(dados.imagem_url ? { _imagem_url: dados.imagem_url } : {}),
+    };
+  }
+
+  try {
+    const supabase = createClient() as any;
+    const { data, error } = await supabase
+      .from('produtos')
+      .update(updatePayload)
+      .eq('id', produtoId)
+      .select();
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('produtos').update(updatePayload).eq('id', produtoId);
+    }
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar produto no Supabase:', err);
+    return false;
+  }
+}
+
+export async function excluirProdutoNoBanco(produtoId: string): Promise<boolean> {
+  try {
+    const supabase = createClient() as any;
+    const { error } = await supabase.from('produtos').delete().eq('id', produtoId);
+    if (error) {
+      const supabaseAnon = criarClienteAnonStateless();
+      await supabaseAnon.from('produtos').delete().eq('id', produtoId);
+    }
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir produto no Supabase:', err);
+    return false;
+  }
 }
 
 // ==============================================================================

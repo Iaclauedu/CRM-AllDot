@@ -20,7 +20,16 @@ import {
   type Negocio,
   type Produto,
   type EtapaFunil,
+  type Empresa,
+  type Contato,
+  type Membro,
 } from '@/lib/mock-data';
+import {
+  buscarEmpresasDoBanco,
+  buscarContatosDoBanco,
+  buscarProdutosDoBanco,
+  buscarMembrosDoBanco,
+} from '@/lib/supabase/service';
 import { formatarMoeda } from '@/lib/utils';
 import { Package, Plus, Trash2 } from 'lucide-react';
 
@@ -39,6 +48,11 @@ export function ModalNovoNegocio({
   etapas = DADOS_ETAPAS,
   funilId = 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb',
 }: ModalNovoNegocioProps) {
+  const [empresas, setEmpresas] = React.useState<Empresa[]>(DADOS_EMPRESAS);
+  const [contatos, setContatos] = React.useState<Contato[]>(DADOS_CONTATOS);
+  const [produtosCatalogo, setProdutosCatalogo] = React.useState<Produto[]>(DADOS_PRODUTOS);
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
+
   const [titulo, setTitulo] = React.useState('');
   const [valorManual, setValorManual] = React.useState('');
   const [empresaId, setEmpresaId] = React.useState(DADOS_EMPRESAS[0]?.id || '');
@@ -53,13 +67,40 @@ export function ModalNovoNegocio({
     }
   }, [etapas]);
 
+  // Carrega dados reais do Supabase ao abrir o modal
+  React.useEffect(() => {
+    if (!open) return;
+    buscarEmpresasDoBanco().then((lista) => {
+      if (lista && lista.length > 0) {
+        setEmpresas(lista);
+        setEmpresaId((prev) => (lista.some((e) => e.id === prev) ? prev : lista[0].id));
+      }
+    });
+    buscarContatosDoBanco().then((lista) => {
+      if (lista && lista.length > 0) {
+        setContatos(lista);
+      }
+    });
+    buscarProdutosDoBanco().then((lista) => {
+      if (lista && lista.length > 0) {
+        setProdutosCatalogo(lista);
+      }
+    });
+    buscarMembrosDoBanco().then((lista) => {
+      if (lista && lista.length > 0) {
+        setMembros(lista);
+        setResponsavelId((prev) => (lista.some((m) => m.id === prev) ? prev : lista[0].id));
+      }
+    });
+  }, [open]);
+
   // Produtos selecionados
   const [produtosSelecionados, setProdutosSelecionados] = React.useState<
     { produto_id: string; nome: string; quantidade: number; valor_unitario: number; subtotal: number }[]
   >([]);
 
   // Filtrar contatos pela empresa selecionada
-  const contatosDaEmpresa = DADOS_CONTATOS.filter((c) => c.empresa_id === empresaId);
+  const contatosDaEmpresa = contatos.filter((c) => c.empresa_id === empresaId);
 
   // Calcula total a partir dos produtos ou usa o manual
   const totalProdutos = produtosSelecionados.reduce((acc, p) => acc + p.subtotal, 0);
@@ -97,9 +138,9 @@ export function ModalNovoNegocio({
     e.preventDefault();
     if (!titulo.trim()) return;
 
-    const empresa = DADOS_EMPRESAS.find((e) => e.id === empresaId);
-    const contato = DADOS_CONTATOS.find((c) => c.id === contatoId);
-    const responsavel = DADOS_MEMBROS.find((m) => m.id === responsavelId);
+    const empresa = empresas.find((e) => e.id === empresaId);
+    const contato = contatos.find((c) => c.id === contatoId);
+    const responsavel = membros.find((m) => m.id === responsavelId);
 
     onSalvar({
       titulo,
@@ -161,12 +202,12 @@ export function ModalNovoNegocio({
                 value={empresaId}
                 onChange={(e) => {
                   setEmpresaId(e.target.value);
-                  const primeiroContato = DADOS_CONTATOS.find((c) => c.empresa_id === e.target.value);
-                  if (primeiroContato) setContatoId(primeiroContato.id);
+                  const primeiroContato = contatos.find((c) => c.empresa_id === e.target.value);
+                  setContatoId(primeiroContato ? primeiroContato.id : '');
                 }}
                 className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                {DADOS_EMPRESAS.map((emp) => (
+                {empresas.map((emp) => (
                   <option key={emp.id} value={emp.id} className="bg-card text-foreground">
                     {emp.nome}
                   </option>
@@ -225,7 +266,7 @@ export function ModalNovoNegocio({
                 onChange={(e) => setResponsavelId(e.target.value)}
                 className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                {DADOS_MEMBROS.map((m) => (
+                {membros.map((m) => (
                   <option key={m.id} value={m.id} className="bg-card text-foreground">
                     {m.nome_completo} ({m.cargo})
                   </option>
@@ -277,7 +318,7 @@ export function ModalNovoNegocio({
 
             {/* Botões de Adicionar Produtos */}
             <div className="flex flex-wrap gap-1.5">
-              {DADOS_PRODUTOS.map((prod) => (
+              {produtosCatalogo.map((prod) => (
                 <button
                   key={prod.id}
                   type="button"

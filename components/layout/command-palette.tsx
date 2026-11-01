@@ -13,13 +13,40 @@ import {
   X,
   ExternalLink,
 } from 'lucide-react';
-import { DADOS_NEGOCIOS, DADOS_CONTATOS, DADOS_EMPRESAS } from '@/lib/mock-data';
+import {
+  DADOS_NEGOCIOS,
+  DADOS_CONTATOS,
+  DADOS_EMPRESAS,
+  DADOS_ORGANIZACAO,
+  type Negocio,
+  type Contato,
+  type Empresa,
+} from '@/lib/mock-data';
+import {
+  buscarNegociosDoBanco,
+  buscarContatosDoBanco,
+  buscarEmpresasDoBanco,
+  buscarOrganizacaoDoBanco,
+} from '@/lib/supabase/service';
 import { formatarMoeda } from '@/lib/utils';
 
 export function CommandPalette() {
   const [aberto, setAberto] = React.useState(false);
   const [termo, setTermo] = React.useState('');
+  const [negocios, setNegocios] = React.useState<Negocio[]>(DADOS_NEGOCIOS);
+  const [contatos, setContatos] = React.useState<Contato[]>(DADOS_CONTATOS);
+  const [empresas, setEmpresas] = React.useState<Empresa[]>(DADOS_EMPRESAS);
+  const [nomeOrg, setNomeOrg] = React.useState(DADOS_ORGANIZACAO.nome);
   const router = useRouter();
+
+  // Carrega dados do Supabase ao abrir a paleta de busca (Ctrl+K)
+  React.useEffect(() => {
+    if (!aberto) return;
+    buscarNegociosDoBanco().then((l) => l?.length && setNegocios(l));
+    buscarContatosDoBanco().then((l) => l?.length && setContatos(l));
+    buscarEmpresasDoBanco().then((l) => l?.length && setEmpresas(l));
+    buscarOrganizacaoDoBanco().then((org) => org?.nome && setNomeOrg(org.nome));
+  }, [aberto]);
 
   // Escuta atalhos de teclado Ctrl+K / Cmd+K
   React.useEffect(() => {
@@ -42,19 +69,19 @@ export function CommandPalette() {
   const termoLower = termo.toLowerCase().trim();
 
   // Filtros de resultados
-  const negociosFiltrados = DADOS_NEGOCIOS.filter(
+  const negociosFiltrados = negocios.filter(
     (n) =>
       n.titulo.toLowerCase().includes(termoLower) ||
       (n.empresa_nome && n.empresa_nome.toLowerCase().includes(termoLower))
   ).slice(0, 4);
 
-  const contatosFiltrados = DADOS_CONTATOS.filter(
+  const contatosFiltrados = contatos.filter(
     (c) =>
       c.nome.toLowerCase().includes(termoLower) ||
       c.email.toLowerCase().includes(termoLower)
   ).slice(0, 3);
 
-  const empresasFiltradas = DADOS_EMPRESAS.filter(
+  const empresasFiltradas = empresas.filter(
     (e) =>
       e.nome.toLowerCase().includes(termoLower) ||
       e.cnpj.includes(termoLower)
@@ -233,7 +260,7 @@ export function CommandPalette() {
               <kbd className="rounded border border-border px-1 font-mono">↵</kbd> selecionar
             </span>
           </div>
-          <span>Acme Cloud Tech (Workspace)</span>
+          <span>{nomeOrg} (Workspace)</span>
         </div>
       </div>
     </div>

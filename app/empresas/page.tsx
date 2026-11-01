@@ -22,21 +22,32 @@ import {
   DADOS_EMPRESAS,
   DADOS_MEMBROS,
   type Empresa,
+  type Membro,
 } from '@/lib/mock-data';
-import { buscarEmpresasDoBanco, criarEmpresaNoBanco } from '@/lib/supabase/service';
+import {
+  buscarEmpresasDoBanco,
+  criarEmpresaNoBanco,
+  buscarMembrosDoBanco,
+} from '@/lib/supabase/service';
 import { formatarData } from '@/lib/utils';
 
 export default function PaginaEmpresas() {
   const [empresas, setEmpresas] = React.useState<Empresa[]>(DADOS_EMPRESAS);
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
   const [busca, setBusca] = React.useState('');
   const [modalAberta, setModalAberta] = React.useState(false);
 
-  // Carrega empresas reais do Supabase
+  // Carrega empresas e membros reais do Supabase
   React.useEffect(() => {
     let ativo = true;
     buscarEmpresasDoBanco().then((lista) => {
       if (ativo && lista && lista.length > 0) {
         setEmpresas(lista);
+      }
+    });
+    buscarMembrosDoBanco().then((lista) => {
+      if (ativo && lista && lista.length > 0) {
+        setMembros(lista);
       }
     });
     return () => {
@@ -60,7 +71,7 @@ export default function PaginaEmpresas() {
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar onAbrirNovoNegocio={() => {}} />
+        <Topbar onAbrirNovoNegocio={() => { }} />
         <CommandPalette />
 
         {/* Header do Módulo */}
@@ -120,7 +131,7 @@ export default function PaginaEmpresas() {
               <tbody className="divide-y divide-border/60">
                 {empresasFiltradas.length > 0 ? (
                   empresasFiltradas.map((emp) => {
-                    const responsavel = DADOS_MEMBROS.find(
+                    const responsavel = membros.find(
                       (m) => m.id === emp.responsavel_id
                     );
 

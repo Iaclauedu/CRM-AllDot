@@ -33,11 +33,13 @@ import {
   type Negocio,
   type Funil,
   type EtapaFunil,
+  type Membro,
 } from '@/lib/mock-data';
 import {
   buscarFunisDoBanco,
   buscarEtapasDoBanco,
   buscarNegociosDoBanco,
+  buscarMembrosDoBanco,
   salvarMovimentacaoEtapaBanco,
   criarNegocioNoBanco,
   atualizarPropriedadesNegocioBanco,
@@ -90,6 +92,7 @@ export function KanbanBoard({
 
   const [etapas, setEtapas] = React.useState<EtapaFunil[]>(DADOS_ETAPAS);
   const [negocios, setNegocios] = React.useState<Negocio[]>(DADOS_NEGOCIOS);
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
   const [carregandoBanco, setCarregandoBanco] = React.useState(false);
   const [activeNegocio, setActiveNegocio] = React.useState<Negocio | null>(null);
   const [activeColuna, setActiveColuna] = React.useState<EtapaFunil | null>(null);
@@ -98,8 +101,13 @@ export function KanbanBoard({
   React.useEffect(() => {
     let ativo = true;
     setCarregandoBanco(true);
-    Promise.all([buscarFunisDoBanco(), buscarEtapasDoBanco(), buscarNegociosDoBanco()])
-      .then(([funisDb, etapasDb, negociosDb]) => {
+    Promise.all([
+      buscarFunisDoBanco(),
+      buscarEtapasDoBanco(),
+      buscarNegociosDoBanco(),
+      buscarMembrosDoBanco(),
+    ])
+      .then(([funisDb, etapasDb, negociosDb, membrosDb]) => {
         if (ativo) {
           if (funisDb && funisDb.length > 0) {
             setFunis(funisDb);
@@ -108,6 +116,7 @@ export function KanbanBoard({
           }
           if (etapasDb && etapasDb.length > 0) setEtapas(etapasDb);
           if (negociosDb && negociosDb.length > 0) setNegocios(negociosDb);
+          if (membrosDb && membrosDb.length > 0) setMembros(membrosDb);
         }
       })
       .finally(() => {
@@ -216,10 +225,18 @@ export function KanbanBoard({
   // Filtragem dos negócios da visualização por busca e status
   const negociosFiltrados = React.useMemo(() => {
     return negociosDoFunil.filter((n) => {
+      const codigoCard = (
+        n.codigo ||
+        n.campos_personalizados?.codigo ||
+        `#${n.id.slice(0, 6)}`
+      ).toLowerCase();
+      const termoBusca = busca.toLowerCase();
       const matchBusca =
-        n.titulo.toLowerCase().includes(busca.toLowerCase()) ||
-        (n.empresa_nome && n.empresa_nome.toLowerCase().includes(busca.toLowerCase())) ||
-        (n.contato_nome && n.contato_nome.toLowerCase().includes(busca.toLowerCase()));
+        n.titulo.toLowerCase().includes(termoBusca) ||
+        codigoCard.includes(termoBusca) ||
+        n.id.toLowerCase().includes(termoBusca) ||
+        (n.empresa_nome && n.empresa_nome.toLowerCase().includes(termoBusca)) ||
+        (n.contato_nome && n.contato_nome.toLowerCase().includes(termoBusca));
 
       const matchResponsavel =
         filtroResponsavel === 'todos' || n.responsavel_id === filtroResponsavel;
@@ -358,11 +375,11 @@ export function KanbanBoard({
       prev.map((n) =>
         n.id === negocioId
           ? {
-              ...n,
-              status: 'perdido',
-              motivo_perda: motivo,
-              ultima_atividade_em: new Date().toISOString(),
-            }
+            ...n,
+            status: 'perdido',
+            motivo_perda: motivo,
+            ultima_atividade_em: new Date().toISOString(),
+          }
           : n
       )
     );
@@ -445,11 +462,10 @@ export function KanbanBoard({
                     {funis.map((f) => (
                       <div
                         key={f.id}
-                        className={`group w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${
-                          f.id === funilAtivo.id
+                        className={`group w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${f.id === funilAtivo.id
                             ? 'bg-[#E42358]/10 text-[#E42358] font-bold'
                             : 'text-slate-700 hover:bg-slate-100 font-medium'
-                        }`}
+                          }`}
                       >
                         <button
                           type="button"
@@ -523,11 +539,10 @@ export function KanbanBoard({
             <div className="flex items-center rounded-xl border border-slate-200/80 bg-slate-100/90 p-1 shadow-inner">
               <button
                 onClick={() => setModoVisualizacao('quadro')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${
-                  modoVisualizacao === 'quadro'
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${modoVisualizacao === 'quadro'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-900'
-                }`}
+                  }`}
                 title="Visualização em Quadro Kanban"
               >
                 <KanbanIcon className={`h-3.5 w-3.5 ${modoVisualizacao === 'quadro' ? 'text-[#E42358]' : ''}`} />
@@ -535,11 +550,10 @@ export function KanbanBoard({
               </button>
               <button
                 onClick={() => setModoVisualizacao('lista')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${
-                  modoVisualizacao === 'lista'
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${modoVisualizacao === 'lista'
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-900'
-                }`}
+                  }`}
                 title="Visualização em Lista Estruturada"
               >
                 <ListIcon className={`h-3.5 w-3.5 ${modoVisualizacao === 'lista' ? 'text-[#E42358]' : ''}`} />
@@ -591,11 +605,10 @@ export function KanbanBoard({
             {/* Chip: Todos Abertos */}
             <button
               onClick={() => setFiltroStatus('aberto')}
-              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                filtroStatus === 'aberto'
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${filtroStatus === 'aberto'
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
-              }`}
+                }`}
             >
               Em Andamento
             </button>
@@ -603,11 +616,10 @@ export function KanbanBoard({
             {/* Chip: Todos */}
             <button
               onClick={() => setFiltroStatus('todos')}
-              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                filtroStatus === 'todos'
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${filtroStatus === 'todos'
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
-              }`}
+                }`}
             >
               Todos os Status
             </button>
@@ -615,11 +627,10 @@ export function KanbanBoard({
             {/* Chip: Ganhos */}
             <button
               onClick={() => setFiltroStatus('ganho')}
-              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                filtroStatus === 'ganho'
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${filtroStatus === 'ganho'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-              }`}
+                }`}
             >
               Ganhos 🏆
             </button>
@@ -627,11 +638,10 @@ export function KanbanBoard({
             {/* Chip: Perdidos */}
             <button
               onClick={() => setFiltroStatus('perdido')}
-              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                filtroStatus === 'perdido'
+              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${filtroStatus === 'perdido'
                   ? 'bg-rose-600 text-white shadow-xs'
                   : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
-              }`}
+                }`}
             >
               Perdidos
             </button>
@@ -647,7 +657,7 @@ export function KanbanBoard({
                 className="bg-transparent text-xs text-slate-700 font-medium focus:outline-none cursor-pointer"
               >
                 <option value="todos">Todos os vendedores</option>
-                {DADOS_MEMBROS.map((m) => (
+                {membros.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.nome_completo}
                   </option>

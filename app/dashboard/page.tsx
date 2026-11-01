@@ -22,20 +22,31 @@ import {
   DADOS_MEMBROS,
   type Negocio,
   type EtapaFunil,
+  type Membro,
 } from '@/lib/mock-data';
-import { buscarNegociosDoBanco, buscarEtapasDoBanco } from '@/lib/supabase/service';
+import {
+  buscarNegociosDoBanco,
+  buscarEtapasDoBanco,
+  buscarMembrosDoBanco,
+} from '@/lib/supabase/service';
 import { formatarMoeda } from '@/lib/utils';
 
 export default function PaginaDashboard() {
   const [negocios, setNegocios] = React.useState<Negocio[]>(DADOS_NEGOCIOS);
   const [etapas, setEtapas] = React.useState<EtapaFunil[]>(DADOS_ETAPAS);
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
 
   React.useEffect(() => {
     let ativo = true;
-    Promise.all([buscarNegociosDoBanco(), buscarEtapasDoBanco()]).then(([negs, ets]) => {
+    Promise.all([
+      buscarNegociosDoBanco(),
+      buscarEtapasDoBanco(),
+      buscarMembrosDoBanco(),
+    ]).then(([negs, ets, mems]) => {
       if (ativo) {
         if (negs && negs.length > 0) setNegocios(negs);
         if (ets && ets.length > 0) setEtapas(ets);
+        if (mems && mems.length > 0) setMembros(mems);
       }
     });
     return () => {
@@ -143,7 +154,7 @@ export default function PaginaDashboard() {
               </h2>
 
               <div className="space-y-3">
-                {DADOS_ETAPAS.map((etapa) => {
+                {etapas.map((etapa) => {
                   const deals = negocios.filter((n) => n.etapa_id === etapa.id);
                   const valor = deals.reduce((acc, n) => acc + n.valor, 0);
 
@@ -175,34 +186,40 @@ export default function PaginaDashboard() {
               </h2>
 
               <div className="space-y-3">
-                {DADOS_MEMBROS.map((membro, index) => (
-                  <div
-                    key={membro.id}
-                    className="flex items-center justify-between p-2.5 rounded-lg border border-border/60 bg-muted/20"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-mono text-xs font-bold text-muted-foreground w-4">
-                        #{index + 1}
-                      </span>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={membro.avatar_url}
-                        alt={membro.nome_completo}
-                        className="h-7 w-7 rounded-full object-cover border border-border"
-                      />
-                      <div>
-                        <p className="text-xs font-medium text-foreground">{membro.nome_completo}</p>
-                        <p className="text-[10px] text-muted-foreground capitalize">{membro.cargo}</p>
+                {membros.map((membro, index) => {
+                  const volumeMembro = negocios
+                    .filter((n) => n.responsavel_id === membro.id && n.status !== 'perdido')
+                    .reduce((acc, n) => acc + n.valor, 0);
+
+                  return (
+                    <div
+                      key={membro.id}
+                      className="flex items-center justify-between p-2.5 rounded-lg border border-border/60 bg-muted/20"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-mono text-xs font-bold text-muted-foreground w-4">
+                          #{index + 1}
+                        </span>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={membro.avatar_url}
+                          alt={membro.nome_completo}
+                          className="h-7 w-7 rounded-full object-cover border border-border"
+                        />
+                        <div>
+                          <p className="text-xs font-medium text-foreground">{membro.nome_completo}</p>
+                          <p className="text-[10px] text-muted-foreground capitalize">{membro.cargo}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-bold font-mono text-emerald-400">
+                          {formatarMoeda(volumeMembro)}
+                        </p>
+                        <span className="text-[10px] text-muted-foreground">Volume sob gestão</span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs font-bold font-mono text-emerald-400">
-                        {formatarMoeda(index === 0 ? 14400 : index === 1 ? 8400 : 4990)}
-                      </p>
-                      <span className="text-[10px] text-muted-foreground">Volume sob gestão</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

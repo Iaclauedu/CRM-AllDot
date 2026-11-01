@@ -10,7 +10,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DADOS_MEMBROS, type Empresa } from '@/lib/mock-data';
+import { DADOS_MEMBROS, type Empresa, type Membro } from '@/lib/mock-data';
+import { buscarMembrosDoBanco } from '@/lib/supabase/service';
 
 interface ModalCriarEmpresaProps {
   open: boolean;
@@ -23,11 +24,22 @@ export function ModalCriarEmpresa({
   onOpenChange,
   onSalvar,
 }: ModalCriarEmpresaProps) {
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
   const [nome, setNome] = React.useState('');
   const [cnpj, setCnpj] = React.useState('');
   const [dominio, setDominio] = React.useState('');
   const [segmento, setSegmento] = React.useState('');
   const [responsavelId, setResponsavelId] = React.useState(DADOS_MEMBROS[0].id);
+
+  React.useEffect(() => {
+    if (!open) return;
+    buscarMembrosDoBanco().then((lista) => {
+      if (lista && lista.length > 0) {
+        setMembros(lista);
+        setResponsavelId((prev) => (lista.some((m) => m.id === prev) ? prev : lista[0].id));
+      }
+    });
+  }, [open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,7 +126,7 @@ export function ModalCriarEmpresa({
                 onChange={(e) => setResponsavelId(e.target.value)}
                 className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                {DADOS_MEMBROS.map((m) => (
+                {membros.map((m) => (
                   <option key={m.id} value={m.id} className="bg-card text-foreground">
                     {m.nome_completo} ({m.cargo})
                   </option>

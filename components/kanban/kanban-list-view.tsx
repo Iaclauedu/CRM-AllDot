@@ -145,8 +145,15 @@ export function KanbanListView({
 
                           {/* Título & Empresa */}
                           <td className="py-3 px-3">
-                            <div className="font-bold text-slate-900 group-hover:text-[#E42358] transition-colors leading-snug">
-                              {negocio.titulo}
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold font-mono text-slate-600 group-hover:bg-[#FFF0F3] group-hover:text-[#E42358] transition-colors">
+                                {negocio.codigo ||
+                                  negocio.campos_personalizados?.codigo ||
+                                  `#${negocio.id.slice(0, 6).toUpperCase()}`}
+                              </span>
+                              <span className="font-bold text-slate-900 group-hover:text-[#E42358] transition-colors leading-snug">
+                                {negocio.titulo}
+                              </span>
                             </div>
                             <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-0.5">
                               <Building2 className="h-3 w-3 text-slate-400" />

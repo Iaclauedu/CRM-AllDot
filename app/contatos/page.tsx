@@ -23,22 +23,33 @@ import {
   DADOS_CONTATOS,
   DADOS_MEMBROS,
   type Contato,
+  type Membro,
 } from '@/lib/mock-data';
-import { buscarContatosDoBanco, criarContatoNoBanco } from '@/lib/supabase/service';
+import {
+  buscarContatosDoBanco,
+  criarContatoNoBanco,
+  buscarMembrosDoBanco,
+} from '@/lib/supabase/service';
 import { formatarData, formatarTelefoneWhatsApp } from '@/lib/utils';
 
 export default function PaginaContatos() {
   const [contatos, setContatos] = React.useState<Contato[]>(DADOS_CONTATOS);
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
   const [busca, setBusca] = React.useState('');
   const [modalAberta, setModalAberta] = React.useState(false);
   const [copiadoId, setCopiadoId] = React.useState<string | null>(null);
 
-  // Carrega contatos reais do Supabase
+  // Carrega contatos e membros reais do Supabase
   React.useEffect(() => {
     let ativo = true;
     buscarContatosDoBanco().then((lista) => {
       if (ativo && lista && lista.length > 0) {
         setContatos(lista);
+      }
+    });
+    buscarMembrosDoBanco().then((lista) => {
+      if (ativo && lista && lista.length > 0) {
+        setMembros(lista);
       }
     });
     return () => {
@@ -69,7 +80,7 @@ export default function PaginaContatos() {
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar onAbrirNovoNegocio={() => {}} />
+        <Topbar onAbrirNovoNegocio={() => { }} />
         <CommandPalette />
 
         {/* Header do Módulo */}
@@ -129,7 +140,7 @@ export default function PaginaContatos() {
               <tbody className="divide-y divide-border/60">
                 {contatosFiltrados.length > 0 ? (
                   contatosFiltrados.map((contato) => {
-                    const responsavel = DADOS_MEMBROS.find(
+                    const responsavel = membros.find(
                       (m) => m.id === contato.responsavel_id
                     );
                     const whatsappNumeroLimpo = contato.telefone_whatsapp.replace(/\D/g, '');

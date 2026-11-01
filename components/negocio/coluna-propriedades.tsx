@@ -26,9 +26,11 @@ import {
   type Negocio,
   type Produto,
   type EtapaFunil,
+  type Membro,
 } from '@/lib/mock-data';
 import {
   buscarProdutosDoBanco,
+  buscarMembrosDoBanco,
   adicionarProdutoAoNegocio,
   removerProdutoDoNegocio,
 } from '@/lib/supabase/service';
@@ -49,8 +51,10 @@ export function ColunaPropriedades({
   const [editandoValor, setEditandoValor] = React.useState(false);
   const [valorTemp, setValorTemp] = React.useState(negocio.valor.toString());
 
-  const [origemLead, setOrigemLead] = React.useState('Outbound SDR');
-  const [editandoOrigem, setEditandoOrigem] = React.useState(false);
+  const [origemLead, setOrigemLead] = React.useState(
+    (negocio.campos_personalizados?.origem_lead as string) || 'Outbound SDR'
+  );
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
 
   const [previsaoFechamento, setPrevisaoFechamento] = React.useState(
     negocio.data_fechamento_esperada || ''
@@ -66,12 +70,13 @@ export function ColunaPropriedades({
   const [salvandoAcao, setSalvandoAcao] = React.useState(false);
   const [removendoId, setRemovendoId] = React.useState<string | null>(null);
 
-  // Sincroniza valorTemp caso o negócio mude externamente
+  // Sincroniza valorTemp e origemLead caso o negócio mude externamente
   React.useEffect(() => {
     setValorTemp(negocio.valor.toString());
-  }, [negocio.valor]);
+    setOrigemLead((negocio.campos_personalizados?.origem_lead as string) || 'Outbound SDR');
+  }, [negocio.valor, negocio.campos_personalizados]);
 
-  // Carrega catálogo de produtos do Supabase
+  // Carrega catálogo de produtos e membros do Supabase
   React.useEffect(() => {
     buscarProdutosDoBanco().then((prods) => {
       if (prods && prods.length > 0) {
@@ -79,10 +84,13 @@ export function ColunaPropriedades({
         setProdutoSelecionadoId((prev) => prev || prods[0].id);
       }
     });
+    buscarMembrosDoBanco().then((lista) => {
+      if (lista && lista.length > 0) setMembros(lista);
+    });
   }, []);
 
-  const etapaAtual = DADOS_ETAPAS.find((e) => e.id === negocio.etapa_id);
-  const responsavelAtual = DADOS_MEMBROS.find(
+  const etapaAtual = etapas.find((e) => e.id === negocio.etapa_id);
+  const responsavelAtual = membros.find(
     (m) => m.id === negocio.responsavel_id
   );
 
@@ -99,7 +107,7 @@ export function ColunaPropriedades({
   };
 
   const handleTrocarResponsavel = (novoRespId: string) => {
-    const resp = DADOS_MEMBROS.find((m) => m.id === novoRespId);
+    const resp = membros.find((m) => m.id === novoRespId);
     if (resp) {
       onAtualizarNegocio({
         responsavel_id: resp.id,
@@ -239,8 +247,8 @@ export function ColunaPropriedades({
               negocio.status === 'ganho'
                 ? 'success'
                 : negocio.status === 'perdido'
-                ? 'destructive'
-                : 'info'
+                  ? 'destructive'
+                  : 'info'
             }
             className="capitalize"
           >
@@ -283,7 +291,7 @@ export function ColunaPropriedades({
             onChange={(e) => handleTrocarResponsavel(e.target.value)}
             className="flex h-8 w-full rounded-md border border-input bg-card/60 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
-            {DADOS_MEMBROS.map((m) => (
+            {membros.map((m) => (
               <option key={m.id} value={m.id} className="bg-card">
                 {m.nome_completo} ({m.cargo})
               </option>
@@ -307,14 +315,23 @@ export function ColunaPropriedades({
           />
         </div>
 
-        {/* Campo Personalizado: Origem do Lead (Edição inline) */}
+        {/* Campo Personalizado: Origem do Lead (Salvo em campos_personalizados no Supabase) */}
         <div>
           <label className="text-muted-foreground text-[11px] block mb-1">
             Origem do Lead (Campo Customizado)
           </label>
           <select
             value={origemLead}
-            onChange={(e) => setOrigemLead(e.target.value)}
+            onChange={(e) => {
+              const novaOrigem = e.target.value;
+              setOrigemLead(novaOrigem);
+              onAtualizarNegocio({
+                campos_personalizados: {
+                  ...(negocio.campos_personalizados || {}),
+                  origem_lead: novaOrigem,
+                },
+              });
+            }}
             className="flex h-8 w-full rounded-md border border-input bg-card/60 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <option value="Outbound SDR" className="bg-card">Outbound SDR</option>

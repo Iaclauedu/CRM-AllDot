@@ -39,6 +39,8 @@ import {
   type Membro,
 } from '@/lib/mock-data';
 import {
+  buscarOrganizacaoDoBanco,
+  salvarOrganizacaoNoBanco,
   buscarFunisDoBanco,
   buscarEtapasDoBanco,
   atualizarNomeOuPropriedadesEtapaBanco,
@@ -55,6 +57,9 @@ export default function PaginaConfiguracoes() {
   const [abaAtiva, setAbaAtiva] = React.useState<'branding' | 'funil' | 'workspace'>('branding');
   const [nome, setNome] = React.useState(DADOS_ORGANIZACAO.nome);
   const [cnpj, setCnpj] = React.useState(DADOS_ORGANIZACAO.cnpj);
+  const [plano, setPlano] = React.useState<string>(DADOS_ORGANIZACAO.plano);
+  const [salvandoWorkspace, setSalvandoWorkspace] = React.useState(false);
+  const [carregandoWorkspace, setCarregandoWorkspace] = React.useState(true);
   const [salvo, setSalvo] = React.useState(false);
 
   // Estados para Gestão de Funis e Etapas
@@ -76,8 +81,21 @@ export default function PaginaConfiguracoes() {
   const [novaProbabilidade, setNovaProbabilidade] = React.useState<number>(50);
   const [novosDiasEstagnacao, setNovosDiasEstagnacao] = React.useState<number>(7);
 
-  // Carrega funis, etapas e membros do Supabase
+  // Carrega dados da organização, funis, etapas e membros do Supabase
   React.useEffect(() => {
+    setCarregandoWorkspace(true);
+    buscarOrganizacaoDoBanco()
+      .then((org) => {
+        if (org) {
+          setNome(org.nome);
+          setCnpj(org.cnpj);
+          setPlano(org.plano || DADOS_ORGANIZACAO.plano);
+        }
+      })
+      .finally(() => {
+        setCarregandoWorkspace(false);
+      });
+
     buscarFunisDoBanco().then((f) => {
       if (f && f.length > 0) {
         setFunis(f);
@@ -101,6 +119,19 @@ export default function PaginaConfiguracoes() {
       }
     }
   }, []);
+
+  // Recarrega os dados do workspace sempre que o usuário abrir a aba "workspace"
+  React.useEffect(() => {
+    if (abaAtiva === 'workspace') {
+      buscarOrganizacaoDoBanco().then((org) => {
+        if (org) {
+          setNome(org.nome);
+          setCnpj(org.cnpj);
+          setPlano(org.plano || DADOS_ORGANIZACAO.plano);
+        }
+      });
+    }
+  }, [abaAtiva]);
 
   const handleTrocarFunil = async (novoFunilId: string) => {
     setFunilSelecionadoId(novoFunilId);
@@ -293,10 +324,28 @@ export default function PaginaConfiguracoes() {
     }
   };
 
-  const handleSalvarWorkspace = (e: React.FormEvent) => {
+  const handleSalvarWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSalvo(true);
-    setTimeout(() => setSalvo(false), 2500);
+    if (!nome.trim()) return;
+
+    setSalvandoWorkspace(true);
+    try {
+      const resultado = await salvarOrganizacaoNoBanco({ nome, cnpj });
+      if (resultado.organizacao) {
+        setNome(resultado.organizacao.nome);
+        setCnpj(resultado.organizacao.cnpj);
+      }
+      setSalvo(true);
+      setMensagemSucesso(
+        'Informações do Workspace (Nome da Organização e CNPJ) salvas com sucesso no Supabase!'
+      );
+      setTimeout(() => setSalvo(false), 2500);
+      setTimeout(() => setMensagemSucesso(null), 4000);
+    } catch (err) {
+      console.error('Erro ao salvar dados do workspace:', err);
+    } finally {
+      setSalvandoWorkspace(false);
+    }
   };
 
   return (
@@ -382,23 +431,44 @@ export default function PaginaConfiguracoes() {
             <div className="space-y-6">
               {/* Dados Gerais da Organização */}
               <form onSubmit={handleSalvarWorkspace} className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
-                <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4 text-emerald-400" />
-                  Informações do Workspace
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Building2 className="h-4 w-4 text-emerald-400" />
+                    Informações do Workspace
+                  </h2>
+                  {carregandoWorkspace && (
+                    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin text-emerald-400" />
+                      Carregando do Supabase...
+                    </span>
+                  )}
+                </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-medium text-foreground block mb-1">
                       Nome da Organização
                     </label>
-                    <Input value={nome} onChange={(e) => setNome(e.target.value)} />
+                    <Input
+                      id="input-nome-organizacao"
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      placeholder="Ex: Acme Cloud Tech"
+                      disabled={salvandoWorkspace}
+                    />
                   </div>
                   <div>
                     <label className="text-xs font-medium text-foreground block mb-1">
                       CNPJ
                     </label>
-                    <Input value={cnpj} onChange={(e) => setCnpj(e.target.value)} className="font-mono" />
+                    <Input
+                      id="input-cnpj-organizacao"
+                      value={cnpj}
+                      onChange={(e) => setCnpj(e.target.value)}
+                      placeholder="00.000.000/0001-00"
+                      className="font-mono"
+                      disabled={salvandoWorkspace}
+                    />
                   </div>
                 </div>
 
@@ -406,13 +476,30 @@ export default function PaginaConfiguracoes() {
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Plano Atual:</span>
                     <Badge variant="success" className="uppercase font-mono text-[10px]">
-                      {DADOS_ORGANIZACAO.plano}
+                      {plano || DADOS_ORGANIZACAO.plano}
                     </Badge>
                   </div>
 
-                  <Button type="submit" size="sm" className="gap-1.5">
-                    {salvo ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : null}
-                    <span>{salvo ? 'Salvo com sucesso' : 'Salvar Alterações'}</span>
+                  <Button
+                    id="btn-salvar-workspace"
+                    type="submit"
+                    size="sm"
+                    disabled={salvandoWorkspace || !nome.trim()}
+                    className="gap-1.5"
+                  >
+                    {salvandoWorkspace ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Salvando no Supabase...</span>
+                      </>
+                    ) : salvo ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 text-emerald-400" />
+                        <span>Salvo com sucesso</span>
+                      </>
+                    ) : (
+                      <span>Salvar Alterações</span>
+                    )}
                   </Button>
                 </div>
               </form>

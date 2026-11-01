@@ -29,6 +29,17 @@ export interface Contato {
   criado_em: string;
 }
 
+export interface CampoPersonalizadoDefinicao {
+  id: string;
+  entidade: 'negocio' | 'empresa' | 'contato' | 'produto';
+  nome_chave: string;
+  label: string;
+  tipo: 'texto' | 'numero' | 'moeda' | 'data' | 'selecao' | 'booleano';
+  opcoes_json?: string[];
+  obrigatorio?: boolean;
+  ordem: number;
+}
+
 export interface Produto {
   id: string;
   nome: string;
@@ -37,6 +48,8 @@ export interface Produto {
   valor: number;
   tipo_cobranca: 'mensal' | 'a_vista' | 'anual';
   ativo: boolean;
+  imagem_url?: string;
+  campos_personalizados?: Record<string, any>;
 }
 
 export interface Atividade {
@@ -53,6 +66,7 @@ export interface Atividade {
 
 export interface Negocio {
   id: string;
+  codigo?: string;
   titulo: string;
   valor: number;
   moeda: string;
@@ -71,6 +85,7 @@ export interface Negocio {
   motivo_perda?: string;
   data_fechamento_esperada?: string;
   ultima_atividade_em: string;
+  campos_personalizados?: Record<string, any>;
   atividades?: Atividade[];
   produtos?: {
     produto_id: string;
@@ -311,6 +326,7 @@ export const DADOS_PRODUTOS: Produto[] = [
 export const DADOS_NEGOCIOS: Negocio[] = [
   {
     id: 'n1111111-1111-4111-f111-111111111111',
+    codigo: '#1001',
     titulo: 'Implantação Enterprise - NexPay',
     valor: 8400.0,
     moeda: 'BRL',
@@ -367,6 +383,7 @@ export const DADOS_NEGOCIOS: Negocio[] = [
   },
   {
     id: 'n2222222-2222-4222-f222-222222222222',
+    codigo: '#1002',
     titulo: 'Expansão Nacional OmniVarejo',
     valor: 14400.0,
     moeda: 'BRL',
@@ -398,6 +415,7 @@ export const DADOS_NEGOCIOS: Negocio[] = [
   },
   {
     id: 'n3333333-3333-4333-f333-333333333333',
+    codigo: '#1003',
     titulo: 'Modernização de CRM - RotaExpress',
     valor: 4990.0,
     moeda: 'BRL',
@@ -419,6 +437,7 @@ export const DADOS_NEGOCIOS: Negocio[] = [
   },
   {
     id: 'n4444444-4444-4444-f444-444444444444',
+    codigo: '#1004',
     titulo: 'Licenciamento Pro VidaPlus',
     valor: 1490.0,
     moeda: 'BRL',

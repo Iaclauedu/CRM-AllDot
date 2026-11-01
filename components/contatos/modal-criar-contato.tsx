@@ -14,7 +14,10 @@ import {
   DADOS_MEMBROS,
   DADOS_EMPRESAS,
   type Contato,
+  type Empresa,
+  type Membro,
 } from '@/lib/mock-data';
+import { buscarEmpresasDoBanco, buscarMembrosDoBanco } from '@/lib/supabase/service';
 
 interface ModalCriarContatoProps {
   open: boolean;
@@ -27,6 +30,8 @@ export function ModalCriarContato({
   onOpenChange,
   onSalvar,
 }: ModalCriarContatoProps) {
+  const [empresas, setEmpresas] = React.useState<Empresa[]>(DADOS_EMPRESAS);
+  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
   const [nome, setNome] = React.useState('');
   const [email, setEmail] = React.useState('');
   const [telefone, setTelefone] = React.useState('');
@@ -34,11 +39,27 @@ export function ModalCriarContato({
   const [empresaId, setEmpresaId] = React.useState(DADOS_EMPRESAS[0]?.id || '');
   const [responsavelId, setResponsavelId] = React.useState(DADOS_MEMBROS[0]?.id || '');
 
+  React.useEffect(() => {
+    if (!open) return;
+    buscarEmpresasDoBanco().then((lista) => {
+      if (lista && lista.length > 0) {
+        setEmpresas(lista);
+        setEmpresaId((prev) => (lista.some((e) => e.id === prev) ? prev : lista[0].id));
+      }
+    });
+    buscarMembrosDoBanco().then((lista) => {
+      if (lista && lista.length > 0) {
+        setMembros(lista);
+        setResponsavelId((prev) => (lista.some((m) => m.id === prev) ? prev : lista[0].id));
+      }
+    });
+  }, [open]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome.trim()) return;
 
-    const empresaSelecionada = DADOS_EMPRESAS.find((emp) => emp.id === empresaId);
+    const empresaSelecionada = empresas.find((emp) => emp.id === empresaId);
 
     onSalvar({
       nome,
@@ -124,7 +145,7 @@ export function ModalCriarContato({
                 onChange={(e) => setEmpresaId(e.target.value)}
                 className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                {DADOS_EMPRESAS.map((emp) => (
+                {empresas.map((emp) => (
                   <option key={emp.id} value={emp.id} className="bg-card text-foreground">
                     {emp.nome}
                   </option>
@@ -142,7 +163,7 @@ export function ModalCriarContato({
               onChange={(e) => setResponsavelId(e.target.value)}
               className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
-              {DADOS_MEMBROS.map((m) => (
+              {membros.map((m) => (
                 <option key={m.id} value={m.id} className="bg-card text-foreground">
                   {m.nome_completo} ({m.cargo})
                 </option>

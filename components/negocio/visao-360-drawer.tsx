@@ -23,6 +23,10 @@ import {
   type Atividade,
   type EtapaFunil,
 } from '@/lib/mock-data';
+import {
+  criarAtividadeNoBanco,
+  concluirAtividadeNoBanco,
+} from '@/lib/supabase/service';
 
 interface Visao360DrawerProps {
   negocio: Negocio | null;
@@ -60,15 +64,19 @@ export function Visao360Drawer({
     onAtualizarNegocio(negocio.id, campos);
   };
 
-  const handleAdicionarAtividade = (novaAtividade: Atividade) => {
+  const handleAdicionarAtividade = async (novaAtividade: Atividade) => {
     const listaAtualizada = [novaAtividade, ...(negocio.atividades || [])];
     onAtualizarNegocio(negocio.id, {
       atividades: listaAtualizada,
       ultima_atividade_em: new Date().toISOString(),
     });
+    await criarAtividadeNoBanco({
+      ...novaAtividade,
+      negocio_id: negocio.id,
+    });
   };
 
-  const handleConcluirAtividade = (atividadeId: string) => {
+  const handleConcluirAtividade = async (atividadeId: string) => {
     const listaAtualizada = (negocio.atividades || []).map((a) =>
       a.id === atividadeId ? { ...a, concluida_em: new Date().toISOString() } : a
     );
@@ -76,6 +84,7 @@ export function Visao360Drawer({
       atividades: listaAtualizada,
       ultima_atividade_em: new Date().toISOString(),
     });
+    await concluirAtividadeNoBanco(atividadeId);
   };
 
   return (
@@ -98,6 +107,11 @@ export function Visao360Drawer({
               </div>
               <div className="truncate">
                 <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold font-mono text-slate-700 border border-slate-200">
+                    {negocio.codigo ||
+                      negocio.campos_personalizados?.codigo ||
+                      `#${negocio.id.slice(0, 6).toUpperCase()}`}
+                  </span>
                   <h1 className="text-base font-bold text-foreground truncate">
                     {negocio.titulo}
                   </h1>

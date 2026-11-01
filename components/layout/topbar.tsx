@@ -15,7 +15,8 @@ import {
   FolderGit2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { DADOS_ORGANIZACAO, DADOS_MEMBROS, DADOS_NEGOCIOS } from '@/lib/mock-data';
+import { DADOS_ORGANIZACAO, DADOS_NEGOCIOS, type Negocio } from '@/lib/mock-data';
+import { buscarOrganizacaoDoBanco, buscarNegociosDoBanco } from '@/lib/supabase/service';
 import { formatarMoeda } from '@/lib/utils';
 import { useCustomBranding } from '@/lib/branding-context';
 import { AllDotLogo } from '@/components/layout/alldot-logo';
@@ -37,6 +38,32 @@ const MODULOS_MAP: Record<string, string> = {
 export function Topbar({ onAbrirNovoNegocio, nomeFunil }: TopbarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [nomeOrganizacao, setNomeOrganizacao] = React.useState(DADOS_ORGANIZACAO.nome);
+  const [negocios, setNegocios] = React.useState<Negocio[]>(DADOS_NEGOCIOS);
+
+  React.useEffect(() => {
+    buscarOrganizacaoDoBanco().then((org) => {
+      if (org?.nome) {
+        setNomeOrganizacao(org.nome);
+      }
+    });
+
+    buscarNegociosDoBanco().then((lista) => {
+      if (lista && lista.length > 0) {
+        setNegocios(lista);
+      }
+    });
+
+    const handleOrgUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.nome) {
+        setNomeOrganizacao(customEvent.detail.nome);
+      }
+    };
+
+    window.addEventListener('workspace-organizacao-atualizada', handleOrgUpdated);
+    return () => window.removeEventListener('workspace-organizacao-atualizada', handleOrgUpdated);
+  }, []);
 
   const dispararCommandPalette = () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
@@ -52,11 +79,9 @@ export function Topbar({ onAbrirNovoNegocio, nomeFunil }: TopbarProps) {
 
   const { branding } = useCustomBranding();
   const moduloAtual = MODULOS_MAP[pathname] || 'Pipeline Principal';
-  const usuarioLogado = DADOS_MEMBROS[0];
-  const valorTotalPipeline = DADOS_NEGOCIOS.filter((n) => n.status === 'aberto').reduce(
-    (acc, n) => acc + n.valor,
-    0
-  );
+  const valorTotalPipeline = negocios
+    .filter((n) => n.status === 'aberto')
+    .reduce((acc, n) => acc + n.valor, 0);
 
   return (
     <header
@@ -85,7 +110,7 @@ export function Topbar({ onAbrirNovoNegocio, nomeFunil }: TopbarProps) {
           <div className="flex items-center gap-1.5 font-medium hover:text-white cursor-pointer transition-colors">
             <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
             <span className="font-semibold text-slate-200">
-              {branding.empresaNome !== 'Alldot' ? branding.empresaNome : DADOS_ORGANIZACAO.nome}
+              {branding.empresaNome !== 'Alldot' ? branding.empresaNome : nomeOrganizacao}
             </span>
           </div>
           <span className="text-slate-600">/</span>

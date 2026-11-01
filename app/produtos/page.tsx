@@ -5,10 +5,15 @@ import {
   Package,
   Plus,
   Search,
-  DollarSign,
-  Calendar,
   CheckCircle2,
-  MoreVertical,
+  Trash2,
+  Pencil,
+  ImagePlus,
+  X,
+  SlidersHorizontal,
+  Loader2,
+  Sparkles,
+  Tag,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,16 +28,55 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { DADOS_PRODUTOS, type Produto } from '@/lib/mock-data';
-import { buscarProdutosDoBanco, criarProdutoNoBanco } from '@/lib/supabase/service';
+import {
+  DADOS_PRODUTOS,
+  type Produto,
+  type CampoPersonalizadoDefinicao,
+} from '@/lib/mock-data';
+import {
+  buscarProdutosDoBanco,
+  criarProdutoNoBanco,
+  atualizarProdutoNoBanco,
+  excluirProdutoNoBanco,
+  buscarCamposPersonalizadosProduto,
+  criarCampoPersonalizadoProduto,
+  removerCampoPersonalizadoProduto,
+  processarEEnviarImagemProduto,
+} from '@/lib/supabase/service';
 import { formatarMoeda } from '@/lib/utils';
 
 export default function PaginaProdutos() {
   const [produtos, setProdutos] = React.useState<Produto[]>(DADOS_PRODUTOS);
+  const [camposDefinicoes, setCamposDefinicoes] = React.useState<CampoPersonalizadoDefinicao[]>([]);
   const [busca, setBusca] = React.useState('');
   const [modalAberta, setModalAberta] = React.useState(false);
+  const [modalCamposAberta, setModalCamposAberta] = React.useState(false);
+  const [produtoEditando, setProdutoEditando] = React.useState<Produto | null>(null);
+  const [salvando, setSalvando] = React.useState(false);
+  const [processandoImagem, setProcessandoImagem] = React.useState(false);
+  const [feedback, setFeedback] = React.useState<string | null>(null);
 
-  // Carrega produtos reais do Supabase
+  // Estados do formulário de produto
+  const [nome, setNome] = React.useState('');
+  const [descricao, setDescricao] = React.useState('');
+  const [sku, setSku] = React.useState('');
+  const [valor, setValor] = React.useState('');
+  const [tipoCobranca, setTipoCobranca] = React.useState<'mensal' | 'a_vista' | 'anual'>('mensal');
+  const [imagemUrl, setImagemUrl] = React.useState<string>('');
+  const [valoresPersonalizados, setValoresPersonalizados] = React.useState<Record<string, any>>({});
+
+  // Estados para criar novo campo personalizado (inline no modal ou no gerenciador)
+  const [criandoCampoInline, setCriandoCampoInline] = React.useState(false);
+  const [novoCampoLabel, setNovoCampoLabel] = React.useState('');
+  const [novoCampoTipo, setNovoCampoTipo] =
+    React.useState<CampoPersonalizadoDefinicao['tipo']>('texto');
+  const [novoCampoOpcoes, setNovoCampoOpcoes] = React.useState('');
+  const [novoCampoObrigatorio, setNovoCampoObrigatorio] = React.useState(false);
+  const [salvandoCampo, setSalvandoCampo] = React.useState(false);
+
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Carrega produtos e definições de campos personalizados do Supabase
   React.useEffect(() => {
     let ativo = true;
     buscarProdutosDoBanco().then((lista) => {
@@ -40,17 +84,183 @@ export default function PaginaProdutos() {
         setProdutos(lista);
       }
     });
+    buscarCamposPersonalizadosProduto().then((campos) => {
+      if (ativo && campos) {
+        setCamposDefinicoes(campos);
+      }
+    });
     return () => {
       ativo = false;
     };
   }, []);
 
-  // Form states
-  const [nome, setNome] = React.useState('');
-  const [descricao, setDescricao] = React.useState('');
-  const [sku, setSku] = React.useState('');
-  const [valor, setValor] = React.useState('');
-  const [tipoCobranca, setTipoCobranca] = React.useState<'mensal' | 'a_vista' | 'anual'>('mensal');
+  const exibirFeedback = (msg: string) => {
+    setFeedback(msg);
+    setTimeout(() => setFeedback(null), 4000);
+  };
+
+  const abrirModalNovoProduto = () => {
+    setProdutoEditando(null);
+    setNome('');
+    setDescricao('');
+    setSku('');
+    setValor('');
+    setTipoCobranca('mensal');
+    setImagemUrl('');
+    setValoresPersonalizados({});
+    setCriandoCampoInline(false);
+    setModalAberta(true);
+  };
+
+  const abrirModalEditarProduto = (prod: Produto) => {
+    setProdutoEditando(prod);
+    setNome(prod.nome);
+    setDescricao(prod.descricao || '');
+    setSku(prod.codigo_sku || '');
+    setValor(String(prod.valor ?? 0));
+    setTipoCobranca(prod.tipo_cobranca || 'mensal');
+    setImagemUrl(prod.imagem_url || '');
+    setValoresPersonalizados({ ...(prod.campos_personalizados || {}) });
+    setCriandoCampoInline(false);
+    setModalAberta(true);
+  };
+
+  const handleSelecionarArquivoImagem = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setProcessandoImagem(true);
+    try {
+      const urlGerada = await processarEEnviarImagemProduto(file);
+      setImagemUrl(urlGerada);
+    } catch (err) {
+      console.error('Erro ao processar imagem do produto:', err);
+    } finally {
+      setProcessandoImagem(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleCriarNovoCampo = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!novoCampoLabel.trim()) return;
+
+    setSalvandoCampo(true);
+    try {
+      const opcoesLista =
+        novoCampoTipo === 'selecao'
+          ? novoCampoOpcoes
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [];
+
+      const criado = await criarCampoPersonalizadoProduto({
+        label: novoCampoLabel.trim(),
+        tipo: novoCampoTipo,
+        opcoes: opcoesLista,
+        obrigatorio: novoCampoObrigatorio,
+        ordem: camposDefinicoes.length + 1,
+      });
+
+      setCamposDefinicoes((prev) => {
+        const semDuplicata = prev.filter((c) => c.nome_chave !== criado.nome_chave);
+        return [...semDuplicata, criado];
+      });
+
+      setNovoCampoLabel('');
+      setNovoCampoTipo('texto');
+      setNovoCampoOpcoes('');
+      setNovoCampoObrigatorio(false);
+      setCriandoCampoInline(false);
+      exibirFeedback(`Campo personalizado "${criado.label}" salvo no Supabase!`);
+    } catch (err) {
+      console.error('Erro ao criar campo personalizado:', err);
+    } finally {
+      setSalvandoCampo(false);
+    }
+  };
+
+  const handleRemoverCampoPersonalizado = async (campo: CampoPersonalizadoDefinicao) => {
+    if (!confirm(`Deseja remover o campo personalizado "${campo.label}"?`)) return;
+
+    await removerCampoPersonalizadoProduto(campo.id);
+    setCamposDefinicoes((prev) => prev.filter((c) => c.id !== campo.id));
+    exibirFeedback(`Campo "${campo.label}" removido.`);
+  };
+
+  const handleAlterarValorPersonalizado = (chave: string, valorCampo: any) => {
+    setValoresPersonalizados((prev) => ({
+      ...prev,
+      [chave]: valorCampo,
+    }));
+  };
+
+  const handleSalvarProduto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nome.trim() || !valor) return;
+
+    setSalvando(true);
+    try {
+      const valorNumerico = parseFloat(valor.replace(',', '.'));
+      const valorFinal = isNaN(valorNumerico) ? 0 : valorNumerico;
+
+      if (produtoEditando) {
+        await atualizarProdutoNoBanco(produtoEditando.id, {
+          nome: nome.trim(),
+          descricao: descricao.trim(),
+          codigo_sku: sku.trim() || produtoEditando.codigo_sku,
+          valor: valorFinal,
+          tipo_cobranca: tipoCobranca,
+          imagem_url: imagemUrl || undefined,
+          campos_personalizados: valoresPersonalizados,
+        });
+
+        const atualizado: Produto = {
+          ...produtoEditando,
+          nome: nome.trim(),
+          descricao: descricao.trim(),
+          codigo_sku: sku.trim() || produtoEditando.codigo_sku,
+          valor: valorFinal,
+          tipo_cobranca: tipoCobranca,
+          imagem_url: imagemUrl || undefined,
+          campos_personalizados: valoresPersonalizados,
+        };
+
+        setProdutos((prev) => prev.map((p) => (p.id === atualizado.id ? atualizado : p)));
+        exibirFeedback(`Produto "${atualizado.nome}" atualizado no Supabase!`);
+      } else {
+        const novoProduto = await criarProdutoNoBanco({
+          nome: nome.trim(),
+          descricao: descricao.trim(),
+          codigo_sku: sku.trim() || `SKU-${Math.floor(Math.random() * 9000 + 1000)}`,
+          valor: valorFinal,
+          tipo_cobranca: tipoCobranca,
+          ativo: true,
+          imagem_url: imagemUrl || undefined,
+          campos_personalizados: valoresPersonalizados,
+        });
+
+        setProdutos((prev) => [novoProduto, ...prev]);
+        exibirFeedback(`Produto "${novoProduto.nome}" cadastrado com sucesso no Supabase!`);
+      }
+
+      setModalAberta(false);
+    } catch (err) {
+      console.error('Erro ao salvar produto:', err);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const handleExcluirProduto = async (prod: Produto) => {
+    if (!confirm(`Tem certeza que deseja excluir o produto "${prod.nome}"?`)) return;
+    await excluirProdutoNoBanco(prod.id);
+    setProdutos((prev) => prev.filter((p) => p.id !== prod.id));
+    exibirFeedback(`Produto "${prod.nome}" removido do catálogo.`);
+  };
 
   const produtosFiltrados = produtos.filter(
     (p) =>
@@ -58,29 +268,6 @@ export default function PaginaProdutos() {
       (p.codigo_sku && p.codigo_sku.toLowerCase().includes(busca.toLowerCase())) ||
       (p.descricao && p.descricao.toLowerCase().includes(busca.toLowerCase()))
   );
-
-  const handleSalvarProduto = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!nome.trim() || !valor) return;
-
-    const valorNumerico = parseFloat(valor.replace(',', '.'));
-    const novoProduto = await criarProdutoNoBanco({
-      nome,
-      descricao,
-      codigo_sku: sku || `SKU-${Math.floor(Math.random() * 9000 + 1000)}`,
-      valor: isNaN(valorNumerico) ? 0 : valorNumerico,
-      tipo_cobranca: tipoCobranca,
-      ativo: true,
-    });
-
-    setProdutos([novoProduto, ...produtos]);
-    setNome('');
-    setDescricao('');
-    setSku('');
-    setValor('');
-    setTipoCobranca('mensal');
-    setModalAberta(false);
-  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background">
@@ -90,7 +277,7 @@ export default function PaginaProdutos() {
         <CommandPalette />
 
         {/* Header do Módulo */}
-        <div className="flex items-center justify-between border-b border-border bg-card/40 px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/40 px-6 py-4">
           <div>
             <div className="flex items-center gap-2">
               <Package className="h-5 w-5 text-emerald-400" />
@@ -102,12 +289,12 @@ export default function PaginaProdutos() {
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Itens, planos e serviços para composição de propostas e cálculo automático de valor dos negócios.
+              Itens, planos, imagens e campos personalizados sincronizados com o Supabase.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="relative w-64">
+          <div className="flex items-center gap-2.5">
+            <div className="relative w-60">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 value={busca}
@@ -116,8 +303,22 @@ export default function PaginaProdutos() {
                 className="pl-8"
               />
             </div>
+
             <Button
-              onClick={() => setModalAberta(true)}
+              id="btn-gerenciar-campos-produto"
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalCamposAberta(true)}
+              className="gap-1.5 text-xs"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Campos Personalizados ({camposDefinicoes.length})</span>
+            </Button>
+
+            <Button
+              id="btn-novo-produto"
+              onClick={abrirModalNovoProduto}
               size="sm"
               className="gap-1.5"
             >
@@ -127,80 +328,151 @@ export default function PaginaProdutos() {
           </div>
         </div>
 
+        {feedback && (
+          <div className="mx-6 mt-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs text-emerald-400 shadow-sm">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span className="font-medium">{feedback}</span>
+          </div>
+        )}
+
         {/* Tabela de Produtos */}
         <div className="flex-1 overflow-auto p-6">
           <div className="rounded-lg border border-border bg-card/60 overflow-hidden shadow-sm">
             <table className="w-full text-left text-xs">
               <thead className="border-b border-border bg-muted/30 text-muted-foreground select-none">
                 <tr>
-                  <th className="py-2.5 px-4 font-medium">Nome do Produto / Plano</th>
+                  <th className="py-2.5 px-4 font-medium">Produto / Imagem</th>
                   <th className="py-2.5 px-4 font-medium">Código SKU</th>
                   <th className="py-2.5 px-4 font-medium">Tipo de Cobrança</th>
                   <th className="py-2.5 px-4 font-medium">Valor Unitário</th>
+                  <th className="py-2.5 px-4 font-medium">Campos Personalizados</th>
                   <th className="py-2.5 px-4 font-medium">Status</th>
-                  <th className="py-2.5 px-3 text-right">Ações</th>
+                  <th className="py-2.5 px-4 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
                 {produtosFiltrados.length > 0 ? (
-                  produtosFiltrados.map((prod) => (
-                    <tr
-                      key={prod.id}
-                      className="hover:bg-accent/40 transition-colors group"
-                    >
-                      <td className="py-2.5 px-4 font-medium text-foreground">
-                        <div>
-                          <div className="font-semibold text-foreground">{prod.nome}</div>
-                          {prod.descricao && (
-                            <div className="text-[11px] text-muted-foreground line-clamp-1 max-w-md">
-                              {prod.descricao}
+                  produtosFiltrados.map((prod) => {
+                    const customEntries = Object.entries(prod.campos_personalizados || {}).filter(
+                      ([k, v]) => k !== '_imagem_url' && v !== '' && v !== null && v !== undefined
+                    );
+
+                    return (
+                      <tr
+                        key={prod.id}
+                        className="hover:bg-accent/40 transition-colors group"
+                      >
+                        <td className="py-2.5 px-4 font-medium text-foreground">
+                          <div className="flex items-center gap-3">
+                            {prod.imagem_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={prod.imagem_url}
+                                alt={prod.nome}
+                                className="h-10 w-10 rounded-lg object-cover border border-border bg-muted shrink-0"
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/40 text-muted-foreground">
+                                <Package className="h-4 w-4" />
+                              </div>
+                            )}
+                            <div>
+                              <div className="font-semibold text-foreground">{prod.nome}</div>
+                              {prod.descricao && (
+                                <div className="text-[11px] text-muted-foreground line-clamp-1 max-w-md">
+                                  {prod.descricao}
+                                </div>
+                              )}
                             </div>
+                          </div>
+                        </td>
+
+                        <td className="py-2.5 px-4 font-mono text-[11px] text-muted-foreground">
+                          {prod.codigo_sku || '-'}
+                        </td>
+
+                        <td className="py-2.5 px-4">
+                          {prod.tipo_cobranca === 'mensal' ? (
+                            <Badge variant="info" className="capitalize">
+                              Recorrência Mensal (MRR)
+                            </Badge>
+                          ) : prod.tipo_cobranca === 'anual' ? (
+                            <Badge variant="warning" className="capitalize">
+                              Anual Recorrente
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="capitalize">
+                              Pagamento À Vista
+                            </Badge>
                           )}
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="py-2.5 px-4 font-mono text-[11px] text-muted-foreground">
-                        {prod.codigo_sku || '-'}
-                      </td>
+                        <td className="py-2.5 px-4 font-semibold text-emerald-400 font-mono">
+                          {formatarMoeda(prod.valor)}
+                        </td>
 
-                      <td className="py-2.5 px-4">
-                        {prod.tipo_cobranca === 'mensal' ? (
-                          <Badge variant="info" className="capitalize">
-                            Recorrência Mensal (MRR)
-                          </Badge>
-                        ) : prod.tipo_cobranca === 'anual' ? (
-                          <Badge variant="warning" className="capitalize">
-                            Anual Recorrente
-                          </Badge>
-                        ) : (
-                          <Badge variant="secondary" className="capitalize">
-                            Pagamento À Vista
-                          </Badge>
-                        )}
-                      </td>
+                        <td className="py-2.5 px-4">
+                          {customEntries.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {customEntries.map(([chave, val]) => {
+                                const def = camposDefinicoes.find((c) => c.nome_chave === chave);
+                                const labelExibicao = def ? def.label : chave;
+                                const valorFormatado =
+                                  typeof val === 'boolean'
+                                    ? val
+                                      ? 'Sim'
+                                      : 'Não'
+                                    : String(val);
+                                return (
+                                  <span
+                                    key={chave}
+                                    className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                                  >
+                                    <strong className="text-foreground">{labelExibicao}:</strong>{' '}
+                                    {valorFormatado}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground/60">—</span>
+                          )}
+                        </td>
 
-                      <td className="py-2.5 px-4 font-semibold text-emerald-400 font-mono">
-                        {formatarMoeda(prod.valor)}
-                      </td>
+                        <td className="py-2.5 px-4">
+                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Ativo
+                          </span>
+                        </td>
 
-                      <td className="py-2.5 px-4">
-                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Ativo no Catálogo
-                        </span>
-                      </td>
-
-                      <td className="py-2.5 px-3 text-right">
-                        <button className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        <td className="py-2.5 px-4 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditarProduto(prod)}
+                              className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                              title="Editar produto, imagem e campos"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleExcluirProduto(prod)}
+                              className="rounded p-1.5 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400 transition-colors"
+                              title="Excluir produto"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="py-12 text-center text-xs text-muted-foreground"
                     >
                       Nenhum produto cadastrado no catálogo.
@@ -212,17 +484,100 @@ export default function PaginaProdutos() {
           </div>
         </div>
 
-        {/* Modal de Criação de Produto */}
+        {/* Modal de Criação / Edição de Produto */}
         <Dialog open={modalAberta} onOpenChange={setModalAberta}>
-          <form onSubmit={handleSalvarProduto}>
+          <form onSubmit={handleSalvarProduto} className="max-h-[82vh] overflow-y-auto pr-1">
             <DialogHeader>
-              <DialogTitle>Novo Produto ou Serviço</DialogTitle>
+              <DialogTitle>
+                {produtoEditando ? 'Editar Produto ou Serviço' : 'Novo Produto ou Serviço'}
+              </DialogTitle>
               <DialogDescription>
-                Cadastre um item no catálogo para ser adicionado aos negócios e propostas do funil.
+                Cadastre as informações, imagem do produto e preencha ou crie novos campos personalizados salvos no Supabase.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3.5 py-2">
+            <div className="space-y-4 py-3">
+              {/* Upload e Preview da Imagem do Produto */}
+              <div className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-2.5">
+                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <ImagePlus className="h-3.5 w-3.5 text-emerald-400" />
+                    Imagem do Produto
+                  </span>
+                  {imagemUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setImagemUrl('')}
+                      className="text-[11px] text-rose-400 hover:underline flex items-center gap-0.5"
+                    >
+                      <X className="h-3 w-3" />
+                      Remover imagem
+                    </button>
+                  )}
+                </label>
+
+                <div className="flex items-center gap-3.5">
+                  {imagemUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={imagemUrl}
+                      alt="Preview do produto"
+                      className="h-16 w-16 rounded-xl object-cover border border-border bg-card shrink-0 shadow-sm"
+                    />
+                  ) : (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex h-16 w-16 shrink-0 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-colors text-muted-foreground"
+                    >
+                      {processandoImagem ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-emerald-400" />
+                      ) : (
+                        <ImagePlus className="h-5 w-5" />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleSelecionarArquivoImagem}
+                        className="hidden"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={processandoImagem}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="h-7 text-xs gap-1.5"
+                      >
+                        {processandoImagem ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Processando...</span>
+                          </>
+                        ) : (
+                          <>
+                            <ImagePlus className="h-3 w-3" />
+                            <span>Enviar Arquivo de Imagem</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <Input
+                      value={imagemUrl.startsWith('data:') ? '' : imagemUrl}
+                      onChange={(e) => setImagemUrl(e.target.value)}
+                      placeholder="Ou cole a URL de uma imagem (https://...)"
+                      className="h-7 text-[11px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Campos Padrão */}
               <div>
                 <label className="text-xs font-medium text-foreground mb-1 block">
                   Nome do Produto / Plano *
@@ -257,9 +612,15 @@ export default function PaginaProdutos() {
                     onChange={(e) => setTipoCobranca(e.target.value as any)}
                     className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
-                    <option value="mensal" className="bg-card">Mensal (MRR)</option>
-                    <option value="a_vista" className="bg-card">À Vista (Setup / Consultoria)</option>
-                    <option value="anual" className="bg-card">Anual</option>
+                    <option value="mensal" className="bg-card">
+                      Mensal (MRR)
+                    </option>
+                    <option value="a_vista" className="bg-card">
+                      À Vista (Setup / Consultoria)
+                    </option>
+                    <option value="anual" className="bg-card">
+                      Anual
+                    </option>
                   </select>
                 </div>
               </div>
@@ -286,6 +647,198 @@ export default function PaginaProdutos() {
                   />
                 </div>
               </div>
+
+              {/* Seção de Campos Personalizados do Produto */}
+              <div className="rounded-xl border border-border bg-card/80 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Tag className="h-3.5 w-3.5 text-emerald-400" />
+                    Campos Personalizados do Produto ({camposDefinicoes.length})
+                  </span>
+                  {!criandoCampoInline && (
+                    <button
+                      type="button"
+                      onClick={() => setCriandoCampoInline(true)}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Criar Novo Campo
+                    </button>
+                  )}
+                </div>
+
+                {/* Formulário Inline para Criar Novo Campo no Supabase */}
+                {criandoCampoInline && (
+                  <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                        <Sparkles className="h-3 w-3" />
+                        Novo Campo Personalizado (Salvo no Supabase)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCriandoCampoInline(false)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                          Nome do Campo *
+                        </label>
+                        <Input
+                          value={novoCampoLabel}
+                          onChange={(e) => setNovoCampoLabel(e.target.value)}
+                          placeholder="Ex: Garantia (Meses), Fornecedor, Peso..."
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                          Tipo do Campo
+                        </label>
+                        <select
+                          value={novoCampoTipo}
+                          onChange={(e) => setNovoCampoTipo(e.target.value as any)}
+                          className="flex h-7 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                        >
+                          <option value="texto">Texto Livre</option>
+                          <option value="numero">Número</option>
+                          <option value="moeda">Moeda (R$)</option>
+                          <option value="data">Data</option>
+                          <option value="selecao">Lista de Opções</option>
+                          <option value="booleano">Sim / Não (Checkbox)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {novoCampoTipo === 'selecao' && (
+                      <div>
+                        <label className="text-[10px] font-semibold uppercase text-muted-foreground block mb-1">
+                          Opções separadas por vírgula
+                        </label>
+                        <Input
+                          value={novoCampoOpcoes}
+                          onChange={(e) => setNovoCampoOpcoes(e.target.value)}
+                          placeholder="Ex: Software, Hardware, Licenciamento"
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCriandoCampoInline(false)}
+                        className="h-7 text-xs"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={salvandoCampo || !novoCampoLabel.trim()}
+                        onClick={() => handleCriarNovoCampo()}
+                        className="h-7 text-xs gap-1"
+                      >
+                        {salvandoCampo ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Plus className="h-3 w-3" />
+                        )}
+                        <span>Adicionar Campo</span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Renderização Dinâmica dos Campos Criados */}
+                {camposDefinicoes.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {camposDefinicoes.map((campo) => {
+                      const val = valoresPersonalizados[campo.nome_chave] ?? '';
+
+                      return (
+                        <div key={campo.id} className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-medium text-foreground">
+                              {campo.label}
+                              {campo.obrigatorio ? ' *' : ''}
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoverCampoPersonalizado(campo)}
+                              className="text-[10px] text-muted-foreground hover:text-rose-400"
+                              title={`Remover campo ${campo.label}`}
+                            >
+                              remover
+                            </button>
+                          </div>
+
+                          {campo.tipo === 'selecao' ? (
+                            <select
+                              value={String(val)}
+                              onChange={(e) =>
+                                handleAlterarValorPersonalizado(campo.nome_chave, e.target.value)
+                              }
+                              className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground"
+                            >
+                              <option value="">Selecione...</option>
+                              {(campo.opcoes_json || []).map((op) => (
+                                <option key={op} value={op}>
+                                  {op}
+                                </option>
+                              ))}
+                            </select>
+                          ) : campo.tipo === 'booleano' ? (
+                            <label className="flex items-center gap-2 h-8 px-2 rounded-md border border-input bg-background/30 cursor-pointer text-xs">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(val)}
+                                onChange={(e) =>
+                                  handleAlterarValorPersonalizado(
+                                    campo.nome_chave,
+                                    e.target.checked
+                                  )
+                                }
+                                className="rounded border-border"
+                              />
+                              <span>{val ? 'Sim' : 'Não'}</span>
+                            </label>
+                          ) : (
+                            <Input
+                              type={
+                                campo.tipo === 'numero' || campo.tipo === 'moeda'
+                                  ? 'number'
+                                  : campo.tipo === 'data'
+                                  ? 'date'
+                                  : 'text'
+                              }
+                              step={campo.tipo === 'moeda' ? '0.01' : undefined}
+                              value={String(val)}
+                              onChange={(e) =>
+                                handleAlterarValorPersonalizado(campo.nome_chave, e.target.value)
+                              }
+                              placeholder={`Preencher ${campo.label.toLowerCase()}...`}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Nenhum campo extra configurado ainda. Clique em{' '}
+                    <strong className="text-foreground">&quot;+ Criar Novo Campo&quot;</strong> acima
+                    para adicionar atributos personalizados ao cadastro de produtos.
+                  </p>
+                )}
+              </div>
             </div>
 
             <DialogFooter>
@@ -293,12 +846,131 @@ export default function PaginaProdutos() {
                 type="button"
                 variant="ghost"
                 onClick={() => setModalAberta(false)}
+                disabled={salvando}
               >
                 Cancelar
               </Button>
-              <Button type="submit">Cadastrar Produto</Button>
+              <Button type="submit" disabled={salvando || processandoImagem} className="gap-1.5">
+                {salvando && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <span>{produtoEditando ? 'Salvar Alterações' : 'Cadastrar Produto'}</span>
+              </Button>
             </DialogFooter>
           </form>
+        </Dialog>
+
+        {/* Modal Gerenciador de Campos Personalizados de Produto */}
+        <Dialog open={modalCamposAberta} onOpenChange={setModalCamposAberta}>
+          <div className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Campos Personalizados de Produtos</DialogTitle>
+              <DialogDescription>
+                Crie os campos específicos que sua operação precisa para os produtos. Todos os campos e valores são salvos no Supabase.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              onSubmit={handleCriarNovoCampo}
+              className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-3"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Nome do Campo *
+                  </label>
+                  <Input
+                    required
+                    value={novoCampoLabel}
+                    onChange={(e) => setNovoCampoLabel(e.target.value)}
+                    placeholder="Ex: Prazo de Entrega, Categoria, SLA..."
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Tipo de Dado
+                  </label>
+                  <select
+                    value={novoCampoTipo}
+                    onChange={(e) => setNovoCampoTipo(e.target.value as any)}
+                    className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
+                  >
+                    <option value="texto">Texto Livre</option>
+                    <option value="numero">Número</option>
+                    <option value="moeda">Moeda (R$)</option>
+                    <option value="data">Data</option>
+                    <option value="selecao">Lista de Seleção</option>
+                    <option value="booleano">Sim / Não</option>
+                  </select>
+                </div>
+              </div>
+
+              {novoCampoTipo === 'selecao' && (
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Opções da Lista (separadas por vírgula)
+                  </label>
+                  <Input
+                    value={novoCampoOpcoes}
+                    onChange={(e) => setNovoCampoOpcoes(e.target.value)}
+                    placeholder="Ex: Básico, Profissional, Enterprise"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={novoCampoObrigatorio}
+                    onChange={(e) => setNovoCampoObrigatorio(e.target.checked)}
+                  />
+                  <span>Campo obrigatório no cadastro</span>
+                </label>
+
+                <Button type="submit" size="sm" disabled={salvandoCampo || !novoCampoLabel.trim()} className="gap-1.5">
+                  {salvandoCampo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  <span>Criar Campo no Supabase</span>
+                </Button>
+              </div>
+            </form>
+
+            {/* Lista de Campos Existentes */}
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {camposDefinicoes.length > 0 ? (
+                camposDefinicoes.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-xs"
+                  >
+                    <div>
+                      <span className="font-semibold text-foreground">{c.label}</span>
+                      <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                        ({c.nome_chave} • {c.tipo})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoverCampoPersonalizado(c)}
+                      className="p-1 text-muted-foreground hover:text-rose-400 transition-colors"
+                      title="Excluir campo"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center py-4 text-xs text-muted-foreground">
+                  Nenhum campo personalizado criado ainda.
+                </p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setModalCamposAberta(false)}>
+                Fechar
+              </Button>
+            </DialogFooter>
+          </div>
         </Dialog>
       </div>
     </div>
