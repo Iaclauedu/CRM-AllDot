@@ -67,31 +67,35 @@ export function ModalNovoNegocio({
     }
   }, [etapas]);
 
-  // Carrega dados reais do Supabase ao abrir o modal
+  // Carrega dados reais do Supabase em paralelo ao abrir o modal
   React.useEffect(() => {
     if (!open) return;
-    buscarEmpresasDoBanco().then((lista) => {
-      if (lista && lista.length > 0) {
-        setEmpresas(lista);
-        setEmpresaId((prev) => (lista.some((e) => e.id === prev) ? prev : lista[0].id));
+    let ativo = true;
+    Promise.all([
+      buscarEmpresasDoBanco(),
+      buscarContatosDoBanco(),
+      buscarProdutosDoBanco(),
+      buscarMembrosDoBanco(),
+    ]).then(([empresasDb, contatosDb, produtosDb, membrosDb]) => {
+      if (!ativo) return;
+      if (empresasDb && empresasDb.length > 0) {
+        setEmpresas(empresasDb);
+        setEmpresaId((prev) => (empresasDb.some((e) => e.id === prev) ? prev : empresasDb[0].id));
+      }
+      if (contatosDb && contatosDb.length > 0) {
+        setContatos(contatosDb);
+      }
+      if (produtosDb && produtosDb.length > 0) {
+        setProdutosCatalogo(produtosDb);
+      }
+      if (membrosDb && membrosDb.length > 0) {
+        setMembros(membrosDb);
+        setResponsavelId((prev) => (membrosDb.some((m) => m.id === prev) ? prev : membrosDb[0].id));
       }
     });
-    buscarContatosDoBanco().then((lista) => {
-      if (lista && lista.length > 0) {
-        setContatos(lista);
-      }
-    });
-    buscarProdutosDoBanco().then((lista) => {
-      if (lista && lista.length > 0) {
-        setProdutosCatalogo(lista);
-      }
-    });
-    buscarMembrosDoBanco().then((lista) => {
-      if (lista && lista.length > 0) {
-        setMembros(lista);
-        setResponsavelId((prev) => (lista.some((m) => m.id === prev) ? prev : lista[0].id));
-      }
-    });
+    return () => {
+      ativo = false;
+    };
   }, [open]);
 
   // Produtos selecionados
@@ -100,7 +104,10 @@ export function ModalNovoNegocio({
   >([]);
 
   // Filtrar contatos pela empresa selecionada
-  const contatosDaEmpresa = contatos.filter((c) => c.empresa_id === empresaId);
+  const contatosDaEmpresa = React.useMemo(
+    () => contatos.filter((c) => c.empresa_id === empresaId),
+    [contatos, empresaId]
+  );
 
   // Calcula total a partir dos produtos ou usa o manual
   const totalProdutos = produtosSelecionados.reduce((acc, p) => acc + p.subtotal, 0);

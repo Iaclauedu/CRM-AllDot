@@ -5,33 +5,59 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const formatadorBRL = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+});
+
+const formatadorDataCurta = new Intl.DateTimeFormat('pt-BR', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+});
+
+const formatadorDataHoraCompleta = new Intl.DateTimeFormat('pt-BR', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
 export function formatarMoeda(valor: number, moeda: string = 'BRL'): string {
+  if (moeda === 'BRL') {
+    return formatadorBRL.format(valor || 0);
+  }
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: moeda,
-  }).format(valor);
+  }).format(valor || 0);
 }
 
 export function formatarData(dataStr: string | null | undefined): string {
   if (!dataStr) return '-';
   const data = new Date(dataStr);
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(data);
+  if (isNaN(data.getTime())) return '-';
+  return formatadorDataCurta.format(data);
 }
 
 export function formatarDataHora(dataStr: string | null | undefined): string {
   if (!dataStr) return '-';
   const data = new Date(dataStr);
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(data);
+  if (isNaN(data.getTime())) return '-';
+  return formatadorDataHoraCompleta.format(data);
+}
+
+export function obterCodigoNegocio(negocio: {
+  id: string;
+  codigo?: string;
+  campos_personalizados?: Record<string, any>;
+}): string {
+  return (
+    negocio.codigo ||
+    negocio.campos_personalizados?.codigo ||
+    `#${negocio.id.slice(0, 6).toUpperCase()}`
+  );
 }
 
 export function formatarTelefoneWhatsApp(numero: string | null | undefined): string {

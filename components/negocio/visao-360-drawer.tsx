@@ -27,6 +27,7 @@ import {
   criarAtividadeNoBanco,
   concluirAtividadeNoBanco,
 } from '@/lib/supabase/service';
+import { obterCodigoNegocio } from '@/lib/utils';
 
 interface Visao360DrawerProps {
   negocio: Negocio | null;
@@ -108,9 +109,7 @@ export function Visao360Drawer({
               <div className="truncate">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-bold font-mono text-slate-700 border border-slate-200">
-                    {negocio.codigo ||
-                      negocio.campos_personalizados?.codigo ||
-                      `#${negocio.id.slice(0, 6).toUpperCase()}`}
+                    {obterCodigoNegocio(negocio)}
                   </span>
                   <h1 className="text-base font-bold text-foreground truncate">
                     {negocio.titulo}
@@ -120,8 +119,8 @@ export function Visao360Drawer({
                       negocio.status === 'ganho'
                         ? 'success'
                         : negocio.status === 'perdido'
-                        ? 'destructive'
-                        : 'secondary'
+                          ? 'destructive'
+                          : 'secondary'
                     }
                     className="capitalize text-[10px]"
                   >
@@ -183,13 +182,12 @@ export function Visao360Drawer({
                   <button
                     key={etapa.id}
                     onClick={() => handleAtualizarCampos({ etapa_id: etapa.id })}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
-                      isEtapaAtual
+                    className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${isEtapaAtual
                         ? 'bg-[#E42358] text-white font-semibold shadow-sm'
                         : isPassada
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                        : 'bg-muted/50 text-muted-foreground hover:bg-accent hover:text-foreground'
-                    }`}
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                          : 'bg-muted/50 text-muted-foreground hover:bg-accent hover:text-foreground'
+                      }`}
                   >
                     <span className="font-mono text-[10px]">{idx + 1}.</span>
                     <span>{etapa.nome}</span>

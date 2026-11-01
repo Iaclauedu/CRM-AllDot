@@ -14,7 +14,7 @@ import {
   Clock,
   CheckCircle2,
 } from 'lucide-react';
-import { formatarMoeda, formatarData } from '@/lib/utils';
+import { formatarMoeda, formatarData, obterCodigoNegocio } from '@/lib/utils';
 import type { Negocio, EtapaFunil } from '@/lib/mock-data';
 
 interface KanbanListViewProps {
@@ -147,9 +147,7 @@ export function KanbanListView({
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-2">
                               <span className="inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold font-mono text-slate-600 group-hover:bg-[#FFF0F3] group-hover:text-[#E42358] transition-colors">
-                                {negocio.codigo ||
-                                  negocio.campos_personalizados?.codigo ||
-                                  `#${negocio.id.slice(0, 6).toUpperCase()}`}
+                                {obterCodigoNegocio(negocio)}
                               </span>
                               <span className="font-bold text-slate-900 group-hover:text-[#E42358] transition-colors leading-snug">
                                 {negocio.titulo}

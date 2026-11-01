@@ -16,7 +16,7 @@ import {
   Flame,
   ArrowUpRight,
 } from 'lucide-react';
-import { formatarMoeda, formatarDataHora } from '@/lib/utils';
+import { formatarMoeda, formatarDataHora, obterCodigoNegocio } from '@/lib/utils';
 import type { Negocio } from '@/lib/mock-data';
 
 interface KanbanCardProps {
@@ -27,7 +27,7 @@ interface KanbanCardProps {
   isOverlay?: boolean;
 }
 
-export function KanbanCard({
+export const KanbanCard = React.memo(function KanbanCard({
   negocio,
   diasEstagnacao = 7,
   onClick,
@@ -89,10 +89,7 @@ export function KanbanCard({
 
   // Verifica se há produtos recorrentes (MRR)
   const totalProdutos = negocio.produtos?.reduce((acc, p) => acc + p.quantidade, 0) || 0;
-  const codigoCard =
-    negocio.codigo ||
-    negocio.campos_personalizados?.codigo ||
-    `#${negocio.id.slice(0, 6).toUpperCase()}`;
+  const codigoCard = obterCodigoNegocio(negocio);
 
   return (
     <div
@@ -228,5 +225,5 @@ export function KanbanCard({
       </div>
     </div>
   );
-}
+});
 

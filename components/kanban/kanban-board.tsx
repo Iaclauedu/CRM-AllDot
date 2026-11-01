@@ -45,7 +45,7 @@ import {
   atualizarPropriedadesNegocioBanco,
   atualizarNomeOuPropriedadesEtapaBanco,
 } from '@/lib/supabase/service';
-import { formatarMoeda } from '@/lib/utils';
+import { formatarMoeda, obterCodigoNegocio } from '@/lib/utils';
 import {
   Search,
   Filter,
@@ -224,14 +224,11 @@ export function KanbanBoard({
 
   // Filtragem dos negócios da visualização por busca e status
   const negociosFiltrados = React.useMemo(() => {
+    const termoBusca = busca.toLowerCase().trim();
     return negociosDoFunil.filter((n) => {
-      const codigoCard = (
-        n.codigo ||
-        n.campos_personalizados?.codigo ||
-        `#${n.id.slice(0, 6)}`
-      ).toLowerCase();
-      const termoBusca = busca.toLowerCase();
+      const codigoCard = obterCodigoNegocio(n).toLowerCase();
       const matchBusca =
+        !termoBusca ||
         n.titulo.toLowerCase().includes(termoBusca) ||
         codigoCard.includes(termoBusca) ||
         n.id.toLowerCase().includes(termoBusca) ||
@@ -463,8 +460,8 @@ export function KanbanBoard({
                       <div
                         key={f.id}
                         className={`group w-full flex items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${f.id === funilAtivo.id
-                            ? 'bg-[#E42358]/10 text-[#E42358] font-bold'
-                            : 'text-slate-700 hover:bg-slate-100 font-medium'
+                          ? 'bg-[#E42358]/10 text-[#E42358] font-bold'
+                          : 'text-slate-700 hover:bg-slate-100 font-medium'
                           }`}
                       >
                         <button
@@ -540,8 +537,8 @@ export function KanbanBoard({
               <button
                 onClick={() => setModoVisualizacao('quadro')}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${modoVisualizacao === 'quadro'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900'
                   }`}
                 title="Visualização em Quadro Kanban"
               >
@@ -551,8 +548,8 @@ export function KanbanBoard({
               <button
                 onClick={() => setModoVisualizacao('lista')}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all duration-200 ${modoVisualizacao === 'lista'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-900'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900'
                   }`}
                 title="Visualização em Lista Estruturada"
               >
@@ -606,8 +603,8 @@ export function KanbanBoard({
             <button
               onClick={() => setFiltroStatus('aberto')}
               className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${filtroStatus === 'aberto'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
                 }`}
             >
               Em Andamento
@@ -617,8 +614,8 @@ export function KanbanBoard({
             <button
               onClick={() => setFiltroStatus('todos')}
               className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${filtroStatus === 'todos'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
                 }`}
             >
               Todos os Status
@@ -628,8 +625,8 @@ export function KanbanBoard({
             <button
               onClick={() => setFiltroStatus('ganho')}
               className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${filtroStatus === 'ganho'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                 }`}
             >
               Ganhos 🏆
@@ -639,8 +636,8 @@ export function KanbanBoard({
             <button
               onClick={() => setFiltroStatus('perdido')}
               className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${filtroStatus === 'perdido'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
                 }`}
             >
               Perdidos

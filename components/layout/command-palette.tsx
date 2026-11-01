@@ -28,7 +28,7 @@ import {
   buscarEmpresasDoBanco,
   buscarOrganizacaoDoBanco,
 } from '@/lib/supabase/service';
-import { formatarMoeda } from '@/lib/utils';
+import { formatarMoeda, obterCodigoNegocio } from '@/lib/utils';
 
 export function CommandPalette() {
   const [aberto, setAberto] = React.useState(false);
@@ -39,13 +39,25 @@ export function CommandPalette() {
   const [nomeOrg, setNomeOrg] = React.useState(DADOS_ORGANIZACAO.nome);
   const router = useRouter();
 
-  // Carrega dados do Supabase ao abrir a paleta de busca (Ctrl+K)
+  // Carrega dados do Supabase em paralelo ao abrir a paleta de busca (Ctrl+K)
   React.useEffect(() => {
     if (!aberto) return;
-    buscarNegociosDoBanco().then((l) => l?.length && setNegocios(l));
-    buscarContatosDoBanco().then((l) => l?.length && setContatos(l));
-    buscarEmpresasDoBanco().then((l) => l?.length && setEmpresas(l));
-    buscarOrganizacaoDoBanco().then((org) => org?.nome && setNomeOrg(org.nome));
+    let ativo = true;
+    Promise.all([
+      buscarNegociosDoBanco(),
+      buscarContatosDoBanco(),
+      buscarEmpresasDoBanco(),
+      buscarOrganizacaoDoBanco(),
+    ]).then(([negociosDb, contatosDb, empresasDb, orgDb]) => {
+      if (!ativo) return;
+      if (negociosDb?.length) setNegocios(negociosDb);
+      if (contatosDb?.length) setContatos(contatosDb);
+      if (empresasDb?.length) setEmpresas(empresasDb);
+      if (orgDb?.nome) setNomeOrg(orgDb.nome);
+    });
+    return () => {
+      ativo = false;
+    };
   }, [aberto]);
 
   // Escuta atalhos de teclado Ctrl+K / Cmd+K
@@ -69,11 +81,16 @@ export function CommandPalette() {
   const termoLower = termo.toLowerCase().trim();
 
   // Filtros de resultados
-  const negociosFiltrados = negocios.filter(
-    (n) =>
-      n.titulo.toLowerCase().includes(termoLower) ||
-      (n.empresa_nome && n.empresa_nome.toLowerCase().includes(termoLower))
-  ).slice(0, 4);
+  const negociosFiltrados = negocios
+    .filter((n) => {
+      const codigo = obterCodigoNegocio(n).toLowerCase();
+      return (
+        n.titulo.toLowerCase().includes(termoLower) ||
+        codigo.includes(termoLower) ||
+        (n.empresa_nome && n.empresa_nome.toLowerCase().includes(termoLower))
+      );
+    })
+    .slice(0, 4);
 
   const contatosFiltrados = contatos.filter(
     (c) =>
@@ -181,7 +198,12 @@ export function CommandPalette() {
                   <div className="flex items-center gap-2 truncate">
                     <FileText className="h-4 w-4 text-muted-foreground group-hover:text-foreground shrink-0" />
                     <div className="text-left truncate">
-                      <div className="font-medium text-foreground truncate">{n.titulo}</div>
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-mono text-[10px] font-bold text-muted-foreground">
+                          {obterCodigoNegocio(n)}
+                        </span>
+                        <span className="font-medium text-foreground truncate">{n.titulo}</span>
+                      </div>
                       <div className="text-[11px] text-muted-foreground">{n.empresa_nome}</div>
                     </div>
                   </div>

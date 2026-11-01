@@ -33,15 +33,22 @@ export interface OrganizacaoWorkspace {
   plano: 'starter' | 'pro' | 'enterprise';
 }
 
+let clienteAnonSingleton: any = null;
+let autorPadraoIdCache: string | null = null;
+
 function criarClienteAnonStateless() {
+  if (clienteAnonSingleton) return clienteAnonSingleton;
+
   const supabaseUrl =
     process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
   const supabaseAnonKey =
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 
-  return createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+  clienteAnonSingleton = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   }) as any;
+
+  return clienteAnonSingleton;
 }
 
 function sincronizarCacheWorkspaceLocal(org: OrganizacaoWorkspace) {
@@ -644,7 +651,7 @@ export async function buscarNegociosDoBanco(): Promise<Negocio[]> {
           .from('negocios')
           .update({ campos_personalizados: { ...cp, codigo: codigoCard } })
           .eq('id', n.id)
-          .then(() => {});
+          .then(() => { });
       }
 
       const atividadesList = n.atividades || [];
@@ -738,13 +745,16 @@ export async function criarAtividadeNoBanco(
 
   try {
     const supabaseAnon = criarClienteAnonStateless();
-    const { data: perfis } = await supabaseAnon
-      .from('perfis')
-      .select('id')
-      .order('criado_em', { ascending: true })
-      .limit(1);
+    if (!autorPadraoIdCache) {
+      const { data: perfis } = await supabaseAnon
+        .from('perfis')
+        .select('id')
+        .order('criado_em', { ascending: true })
+        .limit(1);
+      autorPadraoIdCache = perfis?.[0]?.id || DADOS_MEMBROS[0].id;
+    }
 
-    const autorId = perfis?.[0]?.id || DADOS_MEMBROS[0].id;
+    const autorId = autorPadraoIdCache;
 
     const payload = {
       id: atividadeLocal.id,
