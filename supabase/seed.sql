@@ -106,12 +106,12 @@ BEGIN
     ON CONFLICT (organizacao_id, entidade, nome_chave) DO NOTHING;
 
     -- 6. CATÁLOGO DE PRODUTOS
-    INSERT INTO public.produtos (id, organizacao_id, nome, descricao, codigo_sku, valor, tipo_cobranca, ativo)
+    INSERT INTO public.produtos (id, organizacao_id, nome, descricao, codigo_sku, valor, ativo)
     VALUES
-        (v_prod_plano_pro, v_org_id, 'Plano Professional (MRR)', 'Assinatura mensal para até 15 usuários com integrações premium', 'SKU-PRO-01', 1490.00, 'mensal', true),
-        (v_prod_plano_ent, v_org_id, 'Plano Enterprise (MRR)', 'Assinatura mensal para usuários ilimitados, SLA dedicado e SSO', 'SKU-ENT-01', 4900.00, 'mensal', true),
-        (v_prod_onboarding, v_org_id, 'Setup & Onboarding VIP', 'Implantação técnica, migração de dados e treinamento da equipe comercial', 'SKU-SETUP-01', 3500.00, 'a_vista', true),
-        (v_prod_consultoria, v_org_id, 'Consultoria Comercial 10h', 'Pacote avulso de 10 horas de mentoria de playbook de vendas', 'SKU-CONS-10H', 6000.00, 'a_vista', true)
+        (v_prod_plano_pro, v_org_id, 'Plano Professional (MRR)', 'Assinatura mensal para até 15 usuários com integrações premium', 'SKU-PRO-01', 1490.00, true),
+        (v_prod_plano_ent, v_org_id, 'Plano Enterprise (MRR)', 'Assinatura mensal para usuários ilimitados, SLA dedicado e SSO', 'SKU-ENT-01', 4900.00, true),
+        (v_prod_onboarding, v_org_id, 'Setup & Onboarding VIP', 'Implantação técnica, migração de dados e treinamento da equipe comercial', 'SKU-SETUP-01', 3500.00, true),
+        (v_prod_consultoria, v_org_id, 'Consultoria Comercial 10h', 'Pacote avulso de 10 horas de mentoria de playbook de vendas', 'SKU-CONS-10H', 6000.00, true)
     ON CONFLICT (id) DO NOTHING;
 
     -- 7. FUNIL DE VENDAS E ETAPAS

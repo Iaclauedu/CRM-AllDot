@@ -76,18 +76,21 @@ export function ColunaPropriedades({
     setOrigemLead((negocio.campos_personalizados?.origem_lead as string) || 'Outbound SDR');
   }, [negocio.valor, negocio.campos_personalizados]);
 
-  // Carrega catálogo de produtos e membros do Supabase
+  // Carrega catálogo de produtos (apenas ativos) e membros do Supabase
   React.useEffect(() => {
     buscarProdutosDoBanco().then((prods) => {
-      if (prods && prods.length > 0) {
-        setCatalogoProdutos(prods);
-        setProdutoSelecionadoId((prev) => prev || prods[0].id);
+      if (prods) {
+        const ativos = prods.filter((p) => p.ativo !== false);
+        setCatalogoProdutos(ativos);
+        setProdutoSelecionadoId((prev) =>
+          ativos.some((p) => p.id === prev) ? prev : ativos[0]?.id || ''
+        );
       }
     });
     buscarMembrosDoBanco().then((lista) => {
       if (lista && lista.length > 0) setMembros(lista);
     });
-  }, []);
+  }, [adicionandoProduto]);
 
   const etapaAtual = etapas.find((e) => e.id === negocio.etapa_id);
   const responsavelAtual = membros.find(
@@ -389,11 +392,17 @@ export function ColunaPropriedades({
                   onChange={(e) => setProdutoSelecionadoId(e.target.value)}
                   className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  {catalogoProdutos.map((prod) => (
-                    <option key={prod.id} value={prod.id} className="bg-card">
-                      {prod.nome} — {formatarMoeda(prod.valor)}
+                  {catalogoProdutos.length > 0 ? (
+                    catalogoProdutos.map((prod) => (
+                      <option key={prod.id} value={prod.id} className="bg-card">
+                        {prod.nome} ({prod.unidade_medida || 'Unidade'}) — {formatarMoeda(prod.valor)}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="" className="bg-card">
+                      Nenhum produto ativo disponível
                     </option>
-                  ))}
+                  )}
                 </select>
               </div>
 
@@ -433,7 +442,7 @@ export function ColunaPropriedades({
               <Button
                 size="sm"
                 onClick={handleConfirmarAdicionarProduto}
-                disabled={salvandoAcao}
+                disabled={salvandoAcao || catalogoProdutos.length === 0 || !produtoSelecionadoId}
                 className="bg-[#E42358] hover:bg-[#c91848] text-white text-xs h-7 px-3"
               >
                 {salvandoAcao ? (

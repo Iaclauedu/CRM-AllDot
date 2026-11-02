@@ -75,7 +75,6 @@ CREATE TABLE IF NOT EXISTS public.produtos (
     descricao TEXT,
     codigo_sku TEXT,
     valor NUMERIC(15,2) NOT NULL DEFAULT 0.00,
-    tipo_cobranca TEXT NOT NULL DEFAULT 'mensal' CHECK (tipo_cobranca IN ('mensal', 'a_vista', 'anual')),
     ativo BOOLEAN NOT NULL DEFAULT true,
     campos_personalizados JSONB NOT NULL DEFAULT '{}'::jsonb,
     criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),

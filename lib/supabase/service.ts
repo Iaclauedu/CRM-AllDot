@@ -9,6 +9,8 @@ import {
   DADOS_EMPRESAS,
   DADOS_PRODUTOS,
   DADOS_MEMBROS,
+  DADOS_UNIDADES_MEDIDAS,
+  DADOS_CATEGORIAS_PRODUTO,
   type Negocio,
   type Funil,
   type EtapaFunil,
@@ -18,6 +20,8 @@ import {
   type Atividade,
   type CampoPersonalizadoDefinicao,
   type Membro,
+  type UnidadeMedidaItem,
+  type CategoriaProdutoItem,
 } from '@/lib/mock-data';
 
 const ORG_PADRAO_ID = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
@@ -1115,7 +1119,7 @@ export async function criarContatoNoBanco(novo: Partial<Contato>): Promise<Conta
 }
 
 // ==============================================================================
-// 3. EMPRESAS
+// 3. EMPRESAS & CLIENTES (PF / PJ)
 // ==============================================================================
 
 export async function buscarEmpresasDoBanco(): Promise<Empresa[]> {
@@ -1143,56 +1147,235 @@ export async function buscarEmpresasDoBanco(): Promise<Empresa[]> {
       return DADOS_EMPRESAS;
     }
 
-    return data.map((e: any) => ({
-      id: e.id,
-      nome: e.nome,
-      cnpj: e.cnpj || '-',
-      dominio: e.dominio || '',
-      segmento: e.segmento || 'Geral',
-      responsavel_id: e.responsavel_id || DADOS_MEMBROS[0].id,
-      total_negocios: e.negocios?.length || 0,
-      criado_em: e.criado_em,
-    }));
+    return data.map((e: any) => {
+      const cp =
+        e.campos_personalizados && typeof e.campos_personalizados === 'object'
+          ? e.campos_personalizados
+          : {};
+      const cnpjOuCpf = e.cpf_cnpj || e.cnpj || cp.cpf_cnpj || '-';
+      const digitos = String(cnpjOuCpf).replace(/\D/g, '');
+      const tipoInferido: 'PF' | 'PJ' =
+        e.tipo_cliente || cp.tipo_cliente || (digitos.length === 11 ? 'PF' : 'PJ');
+
+      return {
+        id: e.id,
+        tipo_cliente: tipoInferido,
+        cpf_cnpj: digitos || cnpjOuCpf,
+        nome: e.nome || e.razao_social || cp.razao_social || 'Sem Nome',
+        razao_social: e.razao_social || cp.razao_social || e.nome || '',
+        nome_fantasia: e.nome_fantasia || cp.nome_fantasia || '',
+        cnpj: e.cnpj || e.cpf_cnpj || cp.cpf_cnpj || '-',
+        endereco: e.endereco || cp.endereco || '',
+        contato_principal: e.contato_principal || cp.contato_principal || '',
+        whatsapp_principal: e.whatsapp_principal || cp.whatsapp_principal || '',
+        email_principal: e.email_principal || cp.email_principal || '',
+        origem_lead: e.origem_lead || cp.origem_lead || '',
+        dominio: e.dominio || '',
+        segmento: e.segmento || cp.origem_lead || e.origem_lead || 'Geral',
+        responsavel_id: e.responsavel_id || DADOS_MEMBROS[0].id,
+        total_negocios: e.negocios?.length || 0,
+        criado_em: e.criado_em,
+      };
+    });
   } catch (err) {
     console.warn('Fallback para empresas mock:', err);
     return DADOS_EMPRESAS;
   }
 }
 
+export async function verificarDocumentoExistenteNoBanco(
+  cpfOuCnpj: string,
+  ignorarEmpresaId?: string
+): Promise<Empresa | null> {
+  const digitosBusca = (cpfOuCnpj || '').replace(/\D/g, '');
+  if (!digitosBusca || (digitosBusca.length !== 11 && digitosBusca.length !== 14)) {
+    return null;
+  }
+
+  const lista = await buscarEmpresasDoBanco();
+  const encontrada = lista.find((emp) => {
+    if (ignorarEmpresaId && emp.id === ignorarEmpresaId) return false;
+    const digitosEmp = (emp.cpf_cnpj || emp.cnpj || '').replace(/\D/g, '');
+    return digitosEmp === digitosBusca;
+  });
+
+  return encontrada || null;
+}
+
 export async function criarEmpresaNoBanco(nova: Partial<Empresa>): Promise<Empresa> {
+  const digitosDoc = (nova.cpf_cnpj || nova.cnpj || '').replace(/\D/g, '');
+  const tipoCliente: 'PF' | 'PJ' =
+    nova.tipo_cliente || (digitosDoc.length === 11 ? 'PF' : 'PJ');
+  const razaoOuNome = (nova.razao_social || nova.nome || 'Novo Cliente').trim();
+
   const empresaLocal: Empresa = {
     id: nova.id || crypto.randomUUID(),
-    nome: nova.nome || 'Nova Empresa',
-    cnpj: nova.cnpj || '-',
+    tipo_cliente: tipoCliente,
+    cpf_cnpj: digitosDoc || nova.cnpj || '-',
+    nome: razaoOuNome,
+    razao_social: razaoOuNome,
+    nome_fantasia: (nova.nome_fantasia || '').trim(),
+    cnpj: nova.cnpj || digitosDoc || '-',
+    endereco: (nova.endereco || '').trim(),
+    contato_principal: (nova.contato_principal || '').trim(),
+    whatsapp_principal: (nova.whatsapp_principal || '').trim(),
+    email_principal: (nova.email_principal || '').trim(),
+    origem_lead: nova.origem_lead || 'Prospecção Ativa',
     dominio: nova.dominio || '',
-    segmento: nova.segmento || 'Geral',
+    segmento: nova.segmento || nova.origem_lead || 'Geral',
     responsavel_id: nova.responsavel_id || DADOS_MEMBROS[0].id,
     total_negocios: 0,
     criado_em: new Date().toISOString(),
   };
 
-  const payload = {
+  const metadadosJson = {
+    tipo_cliente: empresaLocal.tipo_cliente,
+    cpf_cnpj: empresaLocal.cpf_cnpj,
+    razao_social: empresaLocal.razao_social,
+    nome_fantasia: empresaLocal.nome_fantasia,
+    endereco: empresaLocal.endereco,
+    contato_principal: empresaLocal.contato_principal,
+    whatsapp_principal: empresaLocal.whatsapp_principal,
+    email_principal: empresaLocal.email_principal,
+    origem_lead: empresaLocal.origem_lead,
+  };
+
+  const payloadCompleto = {
+    id: empresaLocal.id,
+    organizacao_id: ORG_PADRAO_ID,
+    tipo_cliente: empresaLocal.tipo_cliente,
+    cpf_cnpj: empresaLocal.cpf_cnpj,
+    nome: empresaLocal.nome,
+    razao_social: empresaLocal.razao_social,
+    nome_fantasia: empresaLocal.nome_fantasia || null,
+    cnpj: empresaLocal.cnpj,
+    endereco: empresaLocal.endereco || null,
+    contato_principal: empresaLocal.contato_principal || null,
+    whatsapp_principal: empresaLocal.whatsapp_principal || null,
+    email_principal: empresaLocal.email_principal || null,
+    origem_lead: empresaLocal.origem_lead || null,
+    dominio: empresaLocal.dominio || null,
+    segmento: empresaLocal.segmento || null,
+    responsavel_id: empresaLocal.responsavel_id || null,
+    campos_personalizados: metadadosJson,
+  };
+
+  const payloadCompativel = {
     id: empresaLocal.id,
     organizacao_id: ORG_PADRAO_ID,
     nome: empresaLocal.nome,
     cnpj: empresaLocal.cnpj,
-    dominio: empresaLocal.dominio,
-    segmento: empresaLocal.segmento,
+    dominio: empresaLocal.dominio || null,
+    segmento: empresaLocal.segmento || null,
     responsavel_id: empresaLocal.responsavel_id || null,
+    campos_personalizados: metadadosJson,
   };
 
   try {
     const supabase = createClient() as any;
-    const { error } = await supabase.from('empresas').insert(payload);
+    const { error } = await supabase.from('empresas').insert(payloadCompleto);
     if (error) {
       const supabaseAnon = criarClienteAnonStateless();
-      await supabaseAnon.from('empresas').insert(payload);
+      const { error: errAnon } = await supabaseAnon.from('empresas').insert(payloadCompleto);
+      if (errAnon) {
+        await supabaseAnon.from('empresas').insert(payloadCompativel);
+      }
+    }
+
+    // Se informou contato principal, também registra/vincula na tabela de contatos
+    if (empresaLocal.contato_principal) {
+      await criarContatoNoBanco({
+        empresa_id: empresaLocal.id,
+        empresa_nome: empresaLocal.nome,
+        nome: empresaLocal.contato_principal,
+        email: empresaLocal.email_principal || '',
+        telefone_whatsapp: empresaLocal.whatsapp_principal || '',
+        cargo: tipoCliente === 'PF' ? 'Titular' : 'Contato Principal',
+        responsavel_id: empresaLocal.responsavel_id,
+      });
     }
   } catch (err) {
     console.error('Erro ao inserir empresa no Supabase:', err);
   }
 
   return empresaLocal;
+}
+
+export async function atualizarEmpresaNoBanco(
+  empresaId: string,
+  dados: Partial<Empresa>
+): Promise<boolean> {
+  const digitosDoc = (dados.cpf_cnpj || dados.cnpj || '').replace(/\D/g, '');
+  const tipoCliente: 'PF' | 'PJ' =
+    dados.tipo_cliente || (digitosDoc.length === 11 ? 'PF' : 'PJ');
+  const razaoOuNome = (dados.razao_social || dados.nome || '').trim();
+
+  const metadadosJson = {
+    tipo_cliente: tipoCliente,
+    cpf_cnpj: digitosDoc || dados.cnpj || '',
+    razao_social: razaoOuNome,
+    nome_fantasia: (dados.nome_fantasia || '').trim(),
+    endereco: (dados.endereco || '').trim(),
+    contato_principal: (dados.contato_principal || '').trim(),
+    whatsapp_principal: (dados.whatsapp_principal || '').trim(),
+    email_principal: (dados.email_principal || '').trim(),
+    origem_lead: dados.origem_lead || '',
+  };
+
+  const payloadCompleto: any = {
+    tipo_cliente: tipoCliente,
+    cpf_cnpj: digitosDoc || dados.cnpj || null,
+    nome: razaoOuNome,
+    razao_social: razaoOuNome,
+    nome_fantasia: (dados.nome_fantasia || '').trim() || null,
+    cnpj: dados.cnpj || digitosDoc || null,
+    endereco: (dados.endereco || '').trim() || null,
+    contato_principal: (dados.contato_principal || '').trim() || null,
+    whatsapp_principal: (dados.whatsapp_principal || '').trim() || null,
+    email_principal: (dados.email_principal || '').trim() || null,
+    origem_lead: dados.origem_lead || null,
+    segmento: dados.segmento || dados.origem_lead || 'Geral',
+    responsavel_id: dados.responsavel_id || null,
+    campos_personalizados: metadadosJson,
+    atualizado_em: new Date().toISOString(),
+  };
+
+  const payloadCompativel: any = {
+    nome: razaoOuNome,
+    cnpj: dados.cnpj || digitosDoc || null,
+    segmento: dados.segmento || dados.origem_lead || 'Geral',
+    responsavel_id: dados.responsavel_id || null,
+    campos_personalizados: metadadosJson,
+    atualizado_em: new Date().toISOString(),
+  };
+
+  try {
+    const supabase = createClient() as any;
+    const { data, error } = await supabase
+      .from('empresas')
+      .update(payloadCompleto)
+      .eq('id', empresaId)
+      .select();
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const { error: errAnon } = await supabaseAnon
+        .from('empresas')
+        .update(payloadCompleto)
+        .eq('id', empresaId);
+
+      if (errAnon) {
+        await supabaseAnon
+          .from('empresas')
+          .update(payloadCompativel)
+          .eq('id', empresaId);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar empresa no Supabase:', err);
+    return false;
+  }
 }
 
 // ==============================================================================
@@ -1421,20 +1604,112 @@ export async function processarEEnviarImagemProduto(arquivo: File): Promise<stri
   return dataUrlComprimida;
 }
 
-export async function buscarProdutosDoBanco(): Promise<Produto[]> {
+export async function buscarUnidadesMedidasDoBanco(): Promise<UnidadeMedidaItem[]> {
   try {
     const supabase = createClient() as any;
     let { data, error } = await supabase
-      .from('produtos')
+      .from('unidades_medidas')
       .select('*')
-      .order('criado_em', { ascending: false });
+      .eq('ativo', true)
+      .order('ordem', { ascending: true });
 
     if (error || !data || data.length === 0) {
       const supabaseAnon = criarClienteAnonStateless();
       const resAnon = await supabaseAnon
-        .from('produtos')
+        .from('unidades_medidas')
         .select('*')
+        .eq('ativo', true)
+        .order('ordem', { ascending: true });
+
+      if (resAnon.data && resAnon.data.length > 0) {
+        data = resAnon.data;
+        error = null;
+      }
+    }
+
+    if (!error && data && data.length > 0) {
+      return data.map((u: any) => ({
+        id: u.id,
+        nome: u.nome,
+        sigla: u.sigla || '',
+        ordem: u.ordem || 1,
+        ativo: u.ativo ?? true,
+      }));
+    }
+  } catch (err) {
+    console.warn('Fallback para unidades de medida padrão:', err);
+  }
+  return DADOS_UNIDADES_MEDIDAS;
+}
+
+export async function buscarCategoriasProdutoDoBanco(): Promise<CategoriaProdutoItem[]> {
+  try {
+    const supabase = createClient() as any;
+    let { data, error } = await supabase
+      .from('categoria_produto')
+      .select('*')
+      .eq('ativo', true)
+      .order('ordem', { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      const resAnon = await supabaseAnon
+        .from('categoria_produto')
+        .select('*')
+        .eq('ativo', true)
+        .order('ordem', { ascending: true });
+
+      if (resAnon.data && resAnon.data.length > 0) {
+        data = resAnon.data;
+        error = null;
+      }
+    }
+
+    if (!error && data && data.length > 0) {
+      return data.map((c: any) => ({
+        id: c.id,
+        nome: c.nome,
+        ordem: c.ordem || 1,
+        ativo: c.ativo ?? true,
+      }));
+    }
+  } catch (err) {
+    console.warn('Fallback para categorias de produto padrão:', err);
+  }
+  return DADOS_CATEGORIAS_PRODUTO;
+}
+
+export async function buscarProdutosDoBanco(): Promise<Produto[]> {
+  try {
+    const supabase = createClient() as any;
+    const selectCompleto =
+      '*, unidade_ref:unidades_medidas(id, nome, sigla), categoria_ref:categoria_produto(id, nome)';
+
+    let { data, error } = await supabase
+      .from('produtos')
+      .select(selectCompleto)
+      .order('criado_em', { ascending: false });
+
+    if (error || !data || data.length === 0) {
+      const supabaseAnon = criarClienteAnonStateless();
+      let resAnon = await supabaseAnon
+        .from('produtos')
+        .select(selectCompleto)
         .order('criado_em', { ascending: false });
+
+      if (resAnon.error) {
+        resAnon = await supabaseAnon
+          .from('produtos')
+          .select('*, unidade_ref:unidades_medidas(id, nome, sigla)')
+          .order('criado_em', { ascending: false });
+      }
+
+      if (resAnon.error) {
+        resAnon = await supabaseAnon
+          .from('produtos')
+          .select('*')
+          .order('criado_em', { ascending: false });
+      }
 
       if (resAnon.data && resAnon.data.length > 0) {
         data = resAnon.data;
@@ -1455,6 +1730,22 @@ export async function buscarProdutosDoBanco(): Promise<Produto[]> {
       const imagemSalva =
         typeof rawCustom._imagem_url === 'string' ? rawCustom._imagem_url : undefined;
       delete rawCustom._imagem_url;
+      delete rawCustom._unidade_medida;
+      delete rawCustom.unidade_medida;
+
+      const unidadeId = p.unidades_medidas || DADOS_UNIDADES_MEDIDAS[0].id;
+      const unidadeItem = DADOS_UNIDADES_MEDIDAS.find(
+        (u) => u.id === unidadeId || u.nome === p.unidade_ref?.nome
+      );
+      const nomeUnidade =
+        p.unidade_ref?.nome || unidadeItem?.nome || DADOS_UNIDADES_MEDIDAS[0].nome;
+
+      const categoriaId = p.categoria_produto || DADOS_CATEGORIAS_PRODUTO[0].id;
+      const categoriaItem = DADOS_CATEGORIAS_PRODUTO.find(
+        (c) => c.id === categoriaId || c.nome === p.categoria_ref?.nome
+      );
+      const nomeCategoria =
+        p.categoria_ref?.nome || categoriaItem?.nome || DADOS_CATEGORIAS_PRODUTO[0].nome;
 
       return {
         id: p.id,
@@ -1462,7 +1753,10 @@ export async function buscarProdutosDoBanco(): Promise<Produto[]> {
         descricao: p.descricao || '',
         codigo_sku: p.codigo_sku || '',
         valor: Number(p.valor) || 0,
-        tipo_cobranca: p.tipo_cobranca || 'mensal',
+        unidades_medidas: unidadeId,
+        unidade_medida: nomeUnidade,
+        categoria_produto: categoriaId,
+        categoria_nome: nomeCategoria,
         ativo: p.ativo ?? true,
         imagem_url: imagemSalva,
         campos_personalizados: rawCustom,
@@ -1477,6 +1771,24 @@ export async function buscarProdutosDoBanco(): Promise<Produto[]> {
 export async function criarProdutoNoBanco(novo: Partial<Produto>): Promise<Produto> {
   const camposCustomLimpos = { ...(novo.campos_personalizados || {}) };
   delete camposCustomLimpos._imagem_url;
+  delete camposCustomLimpos._unidade_medida;
+  delete camposCustomLimpos.unidade_medida;
+
+  const unidadeEncontrada = DADOS_UNIDADES_MEDIDAS.find(
+    (u) => u.id === novo.unidades_medidas || u.nome === novo.unidade_medida
+  );
+  const unidadeId =
+    novo.unidades_medidas || unidadeEncontrada?.id || DADOS_UNIDADES_MEDIDAS[0].id;
+  const unidadeNome =
+    novo.unidade_medida || unidadeEncontrada?.nome || DADOS_UNIDADES_MEDIDAS[0].nome;
+
+  const categoriaEncontrada = DADOS_CATEGORIAS_PRODUTO.find(
+    (c) => c.id === novo.categoria_produto || c.nome === novo.categoria_nome
+  );
+  const categoriaId =
+    novo.categoria_produto || categoriaEncontrada?.id || DADOS_CATEGORIAS_PRODUTO[0].id;
+  const categoriaNome =
+    novo.categoria_nome || categoriaEncontrada?.nome || DADOS_CATEGORIAS_PRODUTO[0].nome;
 
   const produtoLocal: Produto = {
     id: novo.id || crypto.randomUUID(),
@@ -1484,20 +1796,24 @@ export async function criarProdutoNoBanco(novo: Partial<Produto>): Promise<Produ
     descricao: novo.descricao || '',
     codigo_sku: novo.codigo_sku || `SKU-${Math.floor(Math.random() * 9000 + 1000)}`,
     valor: novo.valor || 0,
-    tipo_cobranca: novo.tipo_cobranca || 'mensal',
+    unidades_medidas: unidadeId,
+    unidade_medida: unidadeNome,
+    categoria_produto: categoriaId,
+    categoria_nome: categoriaNome,
     ativo: novo.ativo ?? true,
     imagem_url: novo.imagem_url || undefined,
     campos_personalizados: camposCustomLimpos,
   };
 
-  const payloadBanco = {
+  const payloadBanco: any = {
     id: produtoLocal.id,
     organizacao_id: ORG_PADRAO_ID,
     nome: produtoLocal.nome,
     descricao: produtoLocal.descricao,
     codigo_sku: produtoLocal.codigo_sku,
     valor: produtoLocal.valor,
-    tipo_cobranca: produtoLocal.tipo_cobranca,
+    unidades_medidas: unidadeId,
+    categoria_produto: categoriaId,
     ativo: produtoLocal.ativo,
     campos_personalizados: {
       ...camposCustomLimpos,
@@ -1511,7 +1827,19 @@ export async function criarProdutoNoBanco(novo: Partial<Produto>): Promise<Produ
 
     if (error) {
       const supabaseAnon = criarClienteAnonStateless();
-      await supabaseAnon.from('produtos').insert(payloadBanco);
+      const { error: errAnon } = await supabaseAnon.from('produtos').insert(payloadBanco);
+      if (
+        errAnon &&
+        (errAnon.message?.includes('unidades_medidas') ||
+          errAnon.message?.includes('categoria_produto'))
+      ) {
+        const {
+          unidades_medidas: _omitUn,
+          categoria_produto: _omitCat,
+          ...payloadSemFk
+        } = payloadBanco;
+        await supabaseAnon.from('produtos').insert(payloadSemFk);
+      }
     }
   } catch (err) {
     console.error('Erro ao cadastrar produto no Supabase:', err);
@@ -1526,6 +1854,8 @@ export async function atualizarProdutoNoBanco(
 ): Promise<boolean> {
   const camposCustomLimpos = { ...(dados.campos_personalizados || {}) };
   delete camposCustomLimpos._imagem_url;
+  delete camposCustomLimpos._unidade_medida;
+  delete camposCustomLimpos.unidade_medida;
 
   const updatePayload: any = {
     atualizado_em: new Date().toISOString(),
@@ -1535,8 +1865,21 @@ export async function atualizarProdutoNoBanco(
   if (dados.descricao !== undefined) updatePayload.descricao = dados.descricao;
   if (dados.codigo_sku !== undefined) updatePayload.codigo_sku = dados.codigo_sku;
   if (dados.valor !== undefined) updatePayload.valor = dados.valor;
-  if (dados.tipo_cobranca !== undefined) updatePayload.tipo_cobranca = dados.tipo_cobranca;
   if (dados.ativo !== undefined) updatePayload.ativo = dados.ativo;
+  if (dados.unidades_medidas !== undefined || dados.unidade_medida !== undefined) {
+    const unidadeEncontrada = DADOS_UNIDADES_MEDIDAS.find(
+      (u) => u.id === dados.unidades_medidas || u.nome === dados.unidade_medida
+    );
+    updatePayload.unidades_medidas =
+      dados.unidades_medidas || unidadeEncontrada?.id || DADOS_UNIDADES_MEDIDAS[0].id;
+  }
+  if (dados.categoria_produto !== undefined || dados.categoria_nome !== undefined) {
+    const categoriaEncontrada = DADOS_CATEGORIAS_PRODUTO.find(
+      (c) => c.id === dados.categoria_produto || c.nome === dados.categoria_nome
+    );
+    updatePayload.categoria_produto =
+      dados.categoria_produto || categoriaEncontrada?.id || DADOS_CATEGORIAS_PRODUTO[0].id;
+  }
   if (dados.campos_personalizados !== undefined || dados.imagem_url !== undefined) {
     updatePayload.campos_personalizados = {
       ...camposCustomLimpos,
@@ -1554,7 +1897,22 @@ export async function atualizarProdutoNoBanco(
 
     if (error || !data || data.length === 0) {
       const supabaseAnon = criarClienteAnonStateless();
-      await supabaseAnon.from('produtos').update(updatePayload).eq('id', produtoId);
+      const { error: errAnon } = await supabaseAnon
+        .from('produtos')
+        .update(updatePayload)
+        .eq('id', produtoId);
+      if (
+        errAnon &&
+        (errAnon.message?.includes('unidades_medidas') ||
+          errAnon.message?.includes('categoria_produto'))
+      ) {
+        const {
+          unidades_medidas: _omitUn,
+          categoria_produto: _omitCat,
+          ...payloadSemFk
+        } = updatePayload;
+        await supabaseAnon.from('produtos').update(payloadSemFk).eq('id', produtoId);
+      }
     }
     return true;
   } catch (err) {

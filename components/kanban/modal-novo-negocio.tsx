@@ -85,8 +85,8 @@ export function ModalNovoNegocio({
       if (contatosDb && contatosDb.length > 0) {
         setContatos(contatosDb);
       }
-      if (produtosDb && produtosDb.length > 0) {
-        setProdutosCatalogo(produtosDb);
+      if (produtosDb) {
+        setProdutosCatalogo(produtosDb.filter((p) => p.ativo !== false));
       }
       if (membrosDb && membrosDb.length > 0) {
         setMembros(membrosDb);

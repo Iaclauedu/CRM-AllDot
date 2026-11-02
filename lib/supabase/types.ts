@@ -9,7 +9,6 @@ export type Json =
 export type PapelUsuario = 'admin' | 'gestor' | 'vendedor';
 export type StatusNegocio = 'aberto' | 'ganho' | 'perdido';
 export type TipoAtividade = 'ligacao' | 'reuniao' | 'whatsapp' | 'email' | 'nota' | 'tarefa';
-export type TipoCobrancaProduto = 'mensal' | 'a_vista' | 'anual';
 export type TipoCampoPersonalizado = 'texto' | 'numero' | 'moeda' | 'data' | 'selecao' | 'booleano';
 
 export interface Database {
@@ -146,6 +145,55 @@ export interface Database {
           criado_em?: string;
         };
       };
+      unidades_medidas: {
+        Row: {
+          id: string;
+          nome: string;
+          sigla: string;
+          ordem: number;
+          ativo: boolean;
+          criado_em: string;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          sigla: string;
+          ordem?: number;
+          ativo?: boolean;
+          criado_em?: string;
+        };
+        Update: {
+          id?: string;
+          nome?: string;
+          sigla?: string;
+          ordem?: number;
+          ativo?: boolean;
+          criado_em?: string;
+        };
+      };
+      categoria_produto: {
+        Row: {
+          id: string;
+          nome: string;
+          ordem: number;
+          ativo: boolean;
+          criado_em: string;
+        };
+        Insert: {
+          id?: string;
+          nome: string;
+          ordem?: number;
+          ativo?: boolean;
+          criado_em?: string;
+        };
+        Update: {
+          id?: string;
+          nome?: string;
+          ordem?: number;
+          ativo?: boolean;
+          criado_em?: string;
+        };
+      };
       produtos: {
         Row: {
           id: string;
@@ -154,7 +202,8 @@ export interface Database {
           descricao: string | null;
           codigo_sku: string | null;
           valor: number;
-          tipo_cobranca: TipoCobrancaProduto;
+          unidades_medidas: string | null;
+          categoria_produto: string | null;
           ativo: boolean;
           campos_personalizados: Record<string, Json>;
           criado_em: string;
@@ -167,7 +216,8 @@ export interface Database {
           descricao?: string | null;
           codigo_sku?: string | null;
           valor?: number;
-          tipo_cobranca?: TipoCobrancaProduto;
+          unidades_medidas?: string | null;
+          categoria_produto?: string | null;
           ativo?: boolean;
           campos_personalizados?: Record<string, Json>;
           criado_em?: string;
@@ -180,7 +230,8 @@ export interface Database {
           descricao?: string | null;
           codigo_sku?: string | null;
           valor?: number;
-          tipo_cobranca?: TipoCobrancaProduto;
+          unidades_medidas?: string | null;
+          categoria_produto?: string | null;
           ativo?: boolean;
           campos_personalizados?: Record<string, Json>;
           criado_em?: string;
@@ -252,8 +303,17 @@ export interface Database {
         Row: {
           id: string;
           organizacao_id: string;
+          tipo_cliente: 'PF' | 'PJ';
+          cpf_cnpj: string | null;
           nome: string;
+          razao_social: string | null;
+          nome_fantasia: string | null;
           cnpj: string | null;
+          endereco: string | null;
+          contato_principal: string | null;
+          whatsapp_principal: string | null;
+          email_principal: string | null;
+          origem_lead: string | null;
           dominio: string | null;
           segmento: string | null;
           responsavel_id: string | null;
@@ -264,8 +324,17 @@ export interface Database {
         Insert: {
           id?: string;
           organizacao_id: string;
+          tipo_cliente?: 'PF' | 'PJ';
+          cpf_cnpj?: string | null;
           nome: string;
+          razao_social?: string | null;
+          nome_fantasia?: string | null;
           cnpj?: string | null;
+          endereco?: string | null;
+          contato_principal?: string | null;
+          whatsapp_principal?: string | null;
+          email_principal?: string | null;
+          origem_lead?: string | null;
           dominio?: string | null;
           segmento?: string | null;
           responsavel_id?: string | null;
@@ -276,8 +345,17 @@ export interface Database {
         Update: {
           id?: string;
           organizacao_id?: string;
+          tipo_cliente?: 'PF' | 'PJ';
+          cpf_cnpj?: string | null;
           nome?: string;
+          razao_social?: string | null;
+          nome_fantasia?: string | null;
           cnpj?: string | null;
+          endereco?: string | null;
+          contato_principal?: string | null;
+          whatsapp_principal?: string | null;
+          email_principal?: string | null;
+          origem_lead?: string | null;
           dominio?: string | null;
           segmento?: string | null;
           responsavel_id?: string | null;

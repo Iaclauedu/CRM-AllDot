@@ -6,10 +6,36 @@ export interface Membro {
   avatar_url: string;
 }
 
+export type TipoCliente = 'PJ' | 'PF';
+
+export type OrigemLeadCliente =
+  | 'Google'
+  | 'Instagram'
+  | 'Indicação'
+  | 'Feira'
+  | 'Prospecção Ativa';
+
+export const OPCOES_ORIGEM_LEAD: OrigemLeadCliente[] = [
+  'Google',
+  'Instagram',
+  'Indicação',
+  'Feira',
+  'Prospecção Ativa',
+];
+
 export interface Empresa {
   id: string;
+  tipo_cliente?: TipoCliente;
+  cpf_cnpj?: string;
   nome: string;
+  razao_social?: string;
+  nome_fantasia?: string;
   cnpj: string;
+  endereco?: string;
+  contato_principal?: string;
+  whatsapp_principal?: string;
+  email_principal?: string;
+  origem_lead?: OrigemLeadCliente | string;
   dominio: string;
   segmento: string;
   responsavel_id: string;
@@ -40,13 +66,124 @@ export interface CampoPersonalizadoDefinicao {
   ordem: number;
 }
 
+export type UnidadeMedidaProduto =
+  | 'Unidade'
+  | 'Cento'
+  | 'Milheiro'
+  | 'Metro Quadrado'
+  | 'Rolo';
+
+export interface UnidadeMedidaItem {
+  id: string;
+  nome: UnidadeMedidaProduto | string;
+  sigla: string;
+  ordem: number;
+  ativo: boolean;
+}
+
+export const DADOS_UNIDADES_MEDIDAS: UnidadeMedidaItem[] = [
+  {
+    id: '11111111-0001-4000-a000-000000000001',
+    nome: 'Unidade',
+    sigla: 'UN',
+    ordem: 1,
+    ativo: true,
+  },
+  {
+    id: '11111111-0002-4000-a000-000000000002',
+    nome: 'Cento',
+    sigla: 'CT',
+    ordem: 2,
+    ativo: true,
+  },
+  {
+    id: '11111111-0003-4000-a000-000000000003',
+    nome: 'Milheiro',
+    sigla: 'MIL',
+    ordem: 3,
+    ativo: true,
+  },
+  {
+    id: '11111111-0004-4000-a000-000000000004',
+    nome: 'Metro Quadrado',
+    sigla: 'M²',
+    ordem: 4,
+    ativo: true,
+  },
+  {
+    id: '11111111-0005-4000-a000-000000000005',
+    nome: 'Rolo',
+    sigla: 'RL',
+    ordem: 5,
+    ativo: true,
+  },
+];
+
+export const OPCOES_UNIDADE_MEDIDA: UnidadeMedidaProduto[] = [
+  'Unidade',
+  'Cento',
+  'Milheiro',
+  'Metro Quadrado',
+  'Rolo',
+];
+
+export type CategoriaProdutoNome =
+  | 'Crachás'
+  | 'Cordões'
+  | 'Insumos de Impressora'
+  | 'Papelaria'
+  | 'Comunicação Visual';
+
+export interface CategoriaProdutoItem {
+  id: string;
+  nome: CategoriaProdutoNome | string;
+  ordem: number;
+  ativo: boolean;
+}
+
+export const DADOS_CATEGORIAS_PRODUTO: CategoriaProdutoItem[] = [
+  {
+    id: '22222222-0001-4000-a000-000000000001',
+    nome: 'Crachás',
+    ordem: 1,
+    ativo: true,
+  },
+  {
+    id: '22222222-0002-4000-a000-000000000002',
+    nome: 'Cordões',
+    ordem: 2,
+    ativo: true,
+  },
+  {
+    id: '22222222-0003-4000-a000-000000000003',
+    nome: 'Insumos de Impressora',
+    ordem: 3,
+    ativo: true,
+  },
+  {
+    id: '22222222-0004-4000-a000-000000000004',
+    nome: 'Papelaria',
+    ordem: 4,
+    ativo: true,
+  },
+  {
+    id: '22222222-0005-4000-a000-000000000005',
+    nome: 'Comunicação Visual',
+    ordem: 5,
+    ativo: true,
+  },
+];
+
 export interface Produto {
   id: string;
   nome: string;
   descricao: string;
   codigo_sku: string;
   valor: number;
-  tipo_cobranca: 'mensal' | 'a_vista' | 'anual';
+  unidades_medidas?: string;
+  unidade_medida?: UnidadeMedidaProduto | string;
+  categoria_produto?: string;
+  categoria_nome?: CategoriaProdutoNome | string;
   ativo: boolean;
   imagem_url?: string;
   campos_personalizados?: Record<string, any>;
@@ -291,7 +428,6 @@ export const DADOS_PRODUTOS: Produto[] = [
     descricao: 'Assinatura mensal para até 15 usuários com integrações premium',
     codigo_sku: 'SKU-PRO-01',
     valor: 1490.0,
-    tipo_cobranca: 'mensal',
     ativo: true,
   },
   {
@@ -300,7 +436,6 @@ export const DADOS_PRODUTOS: Produto[] = [
     descricao: 'Assinatura mensal para usuários ilimitados, SLA dedicado e SSO',
     codigo_sku: 'SKU-ENT-01',
     valor: 4900.0,
-    tipo_cobranca: 'mensal',
     ativo: true,
   },
   {
@@ -309,7 +444,6 @@ export const DADOS_PRODUTOS: Produto[] = [
     descricao: 'Implantação técnica, migração de dados e treinamento da equipe comercial',
     codigo_sku: 'SKU-SETUP-01',
     valor: 3500.0,
-    tipo_cobranca: 'a_vista',
     ativo: true,
   },
   {
@@ -318,7 +452,6 @@ export const DADOS_PRODUTOS: Produto[] = [
     descricao: 'Pacote avulso de 10 horas de mentoria de playbook de vendas',
     codigo_sku: 'SKU-CONS-10H',
     valor: 6000.0,
-    tipo_cobranca: 'a_vista',
     ativo: true,
   },
 ];

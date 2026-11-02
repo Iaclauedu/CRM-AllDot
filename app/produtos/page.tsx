@@ -30,11 +30,17 @@ import {
 } from '@/components/ui/dialog';
 import {
   DADOS_PRODUTOS,
+  DADOS_UNIDADES_MEDIDAS,
+  DADOS_CATEGORIAS_PRODUTO,
   type Produto,
+  type UnidadeMedidaItem,
+  type CategoriaProdutoItem,
   type CampoPersonalizadoDefinicao,
 } from '@/lib/mock-data';
 import {
   buscarProdutosDoBanco,
+  buscarUnidadesMedidasDoBanco,
+  buscarCategoriasProdutoDoBanco,
   criarProdutoNoBanco,
   atualizarProdutoNoBanco,
   excluirProdutoNoBanco,
@@ -47,6 +53,10 @@ import { formatarMoeda } from '@/lib/utils';
 
 export default function PaginaProdutos() {
   const [produtos, setProdutos] = React.useState<Produto[]>(DADOS_PRODUTOS);
+  const [unidadesMedidas, setUnidadesMedidas] =
+    React.useState<UnidadeMedidaItem[]>(DADOS_UNIDADES_MEDIDAS);
+  const [categoriasProduto, setCategoriasProduto] =
+    React.useState<CategoriaProdutoItem[]>(DADOS_CATEGORIAS_PRODUTO);
   const [camposDefinicoes, setCamposDefinicoes] = React.useState<CampoPersonalizadoDefinicao[]>([]);
   const [busca, setBusca] = React.useState('');
   const [modalAberta, setModalAberta] = React.useState(false);
@@ -61,7 +71,13 @@ export default function PaginaProdutos() {
   const [descricao, setDescricao] = React.useState('');
   const [sku, setSku] = React.useState('');
   const [valor, setValor] = React.useState('');
-  const [tipoCobranca, setTipoCobranca] = React.useState<'mensal' | 'a_vista' | 'anual'>('mensal');
+  const [unidadeMedidaId, setUnidadeMedidaId] = React.useState<string>(
+    DADOS_UNIDADES_MEDIDAS[0].id
+  );
+  const [categoriaId, setCategoriaId] = React.useState<string>(
+    DADOS_CATEGORIAS_PRODUTO[0].id
+  );
+  const [ativo, setAtivo] = React.useState<boolean>(true);
   const [imagemUrl, setImagemUrl] = React.useState<string>('');
   const [valoresPersonalizados, setValoresPersonalizados] = React.useState<Record<string, any>>({});
 
@@ -76,21 +92,23 @@ export default function PaginaProdutos() {
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Carrega produtos e definições de campos personalizados do Supabase
+  // Carrega produtos, unidades de medida, categorias e definições de campos personalizados do Supabase
   React.useEffect(() => {
-    let ativo = true;
-    buscarProdutosDoBanco().then((lista) => {
-      if (ativo && lista && lista.length > 0) {
-        setProdutos(lista);
-      }
-    });
-    buscarCamposPersonalizadosProduto().then((campos) => {
-      if (ativo && campos) {
-        setCamposDefinicoes(campos);
-      }
+    let montado = true;
+    Promise.all([
+      buscarProdutosDoBanco(),
+      buscarUnidadesMedidasDoBanco(),
+      buscarCategoriasProdutoDoBanco(),
+      buscarCamposPersonalizadosProduto(),
+    ]).then(([listaProdutos, listaUnidades, listaCategorias, campos]) => {
+      if (!montado) return;
+      if (listaProdutos && listaProdutos.length > 0) setProdutos(listaProdutos);
+      if (listaUnidades && listaUnidades.length > 0) setUnidadesMedidas(listaUnidades);
+      if (listaCategorias && listaCategorias.length > 0) setCategoriasProduto(listaCategorias);
+      if (campos) setCamposDefinicoes(campos);
     });
     return () => {
-      ativo = false;
+      montado = false;
     };
   }, []);
 
@@ -105,7 +123,9 @@ export default function PaginaProdutos() {
     setDescricao('');
     setSku('');
     setValor('');
-    setTipoCobranca('mensal');
+    setUnidadeMedidaId(unidadesMedidas[0]?.id || DADOS_UNIDADES_MEDIDAS[0].id);
+    setCategoriaId(categoriasProduto[0]?.id || DADOS_CATEGORIAS_PRODUTO[0].id);
+    setAtivo(true);
     setImagemUrl('');
     setValoresPersonalizados({});
     setCriandoCampoInline(false);
@@ -113,12 +133,24 @@ export default function PaginaProdutos() {
   };
 
   const abrirModalEditarProduto = (prod: Produto) => {
+    const unidadeEncontrada = unidadesMedidas.find(
+      (u) => u.id === prod.unidades_medidas || u.nome === prod.unidade_medida
+    );
+    const categoriaEncontrada = categoriasProduto.find(
+      (c) => c.id === prod.categoria_produto || c.nome === prod.categoria_nome
+    );
     setProdutoEditando(prod);
     setNome(prod.nome);
     setDescricao(prod.descricao || '');
     setSku(prod.codigo_sku || '');
     setValor(String(prod.valor ?? 0));
-    setTipoCobranca(prod.tipo_cobranca || 'mensal');
+    setUnidadeMedidaId(
+      prod.unidades_medidas || unidadeEncontrada?.id || unidadesMedidas[0]?.id || DADOS_UNIDADES_MEDIDAS[0].id
+    );
+    setCategoriaId(
+      prod.categoria_produto || categoriaEncontrada?.id || categoriasProduto[0]?.id || DADOS_CATEGORIAS_PRODUTO[0].id
+    );
+    setAtivo(prod.ativo !== false);
     setImagemUrl(prod.imagem_url || '');
     setValoresPersonalizados({ ...(prod.campos_personalizados || {}) });
     setCriandoCampoInline(false);
@@ -152,9 +184,9 @@ export default function PaginaProdutos() {
       const opcoesLista =
         novoCampoTipo === 'selecao'
           ? novoCampoOpcoes
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean)
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
           : [];
 
       const criado = await criarCampoPersonalizadoProduto({
@@ -206,6 +238,10 @@ export default function PaginaProdutos() {
     try {
       const valorNumerico = parseFloat(valor.replace(',', '.'));
       const valorFinal = isNaN(valorNumerico) ? 0 : valorNumerico;
+      const unidadeItem = unidadesMedidas.find((u) => u.id === unidadeMedidaId);
+      const nomeUnidade = unidadeItem?.nome || 'Unidade';
+      const categoriaItem = categoriasProduto.find((c) => c.id === categoriaId);
+      const nomeCategoria = categoriaItem?.nome || 'Crachás';
 
       if (produtoEditando) {
         await atualizarProdutoNoBanco(produtoEditando.id, {
@@ -213,7 +249,11 @@ export default function PaginaProdutos() {
           descricao: descricao.trim(),
           codigo_sku: sku.trim() || produtoEditando.codigo_sku,
           valor: valorFinal,
-          tipo_cobranca: tipoCobranca,
+          unidades_medidas: unidadeMedidaId,
+          unidade_medida: nomeUnidade,
+          categoria_produto: categoriaId,
+          categoria_nome: nomeCategoria,
+          ativo: ativo,
           imagem_url: imagemUrl || undefined,
           campos_personalizados: valoresPersonalizados,
         });
@@ -224,7 +264,11 @@ export default function PaginaProdutos() {
           descricao: descricao.trim(),
           codigo_sku: sku.trim() || produtoEditando.codigo_sku,
           valor: valorFinal,
-          tipo_cobranca: tipoCobranca,
+          unidades_medidas: unidadeMedidaId,
+          unidade_medida: nomeUnidade,
+          categoria_produto: categoriaId,
+          categoria_nome: nomeCategoria,
+          ativo: ativo,
           imagem_url: imagemUrl || undefined,
           campos_personalizados: valoresPersonalizados,
         };
@@ -237,8 +281,11 @@ export default function PaginaProdutos() {
           descricao: descricao.trim(),
           codigo_sku: sku.trim() || `SKU-${Math.floor(Math.random() * 9000 + 1000)}`,
           valor: valorFinal,
-          tipo_cobranca: tipoCobranca,
-          ativo: true,
+          unidades_medidas: unidadeMedidaId,
+          unidade_medida: nomeUnidade,
+          categoria_produto: categoriaId,
+          categoria_nome: nomeCategoria,
+          ativo: ativo,
           imagem_url: imagemUrl || undefined,
           campos_personalizados: valoresPersonalizados,
         });
@@ -253,6 +300,22 @@ export default function PaginaProdutos() {
     } finally {
       setSalvando(false);
     }
+  };
+
+  const handleAlternarStatusProduto = async (prod: Produto) => {
+    const novoStatus = prod.ativo === false ? true : false;
+    setProdutos((prev) =>
+      prev.map((p) => (p.id === prod.id ? { ...p, ativo: novoStatus } : p))
+    );
+    await atualizarProdutoNoBanco(prod.id, {
+      ativo: novoStatus,
+      unidade_medida: prod.unidade_medida,
+      imagem_url: prod.imagem_url,
+      campos_personalizados: prod.campos_personalizados,
+    });
+    exibirFeedback(
+      `Produto "${prod.nome}" marcado como ${novoStatus ? 'Ativo' : 'Inativo'} no Supabase!`
+    );
   };
 
   const handleExcluirProduto = async (prod: Produto) => {
@@ -273,7 +336,7 @@ export default function PaginaProdutos() {
     <div className="flex h-screen w-full overflow-hidden bg-background">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar onAbrirNovoNegocio={() => {}} />
+        <Topbar onAbrirNovoNegocio={() => { }} />
         <CommandPalette />
 
         {/* Header do Módulo */}
@@ -343,7 +406,8 @@ export default function PaginaProdutos() {
                 <tr>
                   <th className="py-2.5 px-4 font-medium">Produto / Imagem</th>
                   <th className="py-2.5 px-4 font-medium">Código SKU</th>
-                  <th className="py-2.5 px-4 font-medium">Tipo de Cobrança</th>
+                  <th className="py-2.5 px-4 font-medium">Categoria</th>
+                  <th className="py-2.5 px-4 font-medium">Unidade de Medida</th>
                   <th className="py-2.5 px-4 font-medium">Valor Unitário</th>
                   <th className="py-2.5 px-4 font-medium">Campos Personalizados</th>
                   <th className="py-2.5 px-4 font-medium">Status</th>
@@ -354,7 +418,15 @@ export default function PaginaProdutos() {
                 {produtosFiltrados.length > 0 ? (
                   produtosFiltrados.map((prod) => {
                     const customEntries = Object.entries(prod.campos_personalizados || {}).filter(
-                      ([k, v]) => k !== '_imagem_url' && v !== '' && v !== null && v !== undefined
+                      ([k, v]) =>
+                        k !== '_imagem_url' &&
+                        k !== '_unidade_medida' &&
+                        k !== 'unidade_medida' &&
+                        k !== '_categoria_produto' &&
+                        k !== 'categoria_produto' &&
+                        v !== '' &&
+                        v !== null &&
+                        v !== undefined
                     );
 
                     return (
@@ -392,19 +464,15 @@ export default function PaginaProdutos() {
                         </td>
 
                         <td className="py-2.5 px-4">
-                          {prod.tipo_cobranca === 'mensal' ? (
-                            <Badge variant="info" className="capitalize">
-                              Recorrência Mensal (MRR)
-                            </Badge>
-                          ) : prod.tipo_cobranca === 'anual' ? (
-                            <Badge variant="warning" className="capitalize">
-                              Anual Recorrente
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className="capitalize">
-                              Pagamento À Vista
-                            </Badge>
-                          )}
+                          <Badge variant="secondary" className="text-[11px] font-medium">
+                            {prod.categoria_nome || 'Crachás'}
+                          </Badge>
+                        </td>
+
+                        <td className="py-2.5 px-4">
+                          <Badge variant="outline" className="text-[11px] font-medium">
+                            {prod.unidade_medida || 'Unidade'}
+                          </Badge>
                         </td>
 
                         <td className="py-2.5 px-4 font-semibold text-emerald-400 font-mono">
@@ -440,10 +508,27 @@ export default function PaginaProdutos() {
                         </td>
 
                         <td className="py-2.5 px-4">
-                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Ativo
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAlternarStatusProduto(prod)}
+                            title="Clique para alternar entre Ativo e Inativo"
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border transition-colors ${prod.ativo !== false
+                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                                : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted'
+                              }`}
+                          >
+                            {prod.ativo !== false ? (
+                              <>
+                                <CheckCircle2 className="h-3 w-3" />
+                                <span>Ativo</span>
+                              </>
+                            ) : (
+                              <>
+                                <X className="h-3 w-3" />
+                                <span>Inativo</span>
+                              </>
+                            )}
+                          </button>
                         </td>
 
                         <td className="py-2.5 px-4 text-right">
@@ -578,16 +663,35 @@ export default function PaginaProdutos() {
               </div>
 
               {/* Campos Padrão */}
-              <div>
-                <label className="text-xs font-medium text-foreground mb-1 block">
-                  Nome do Produto / Plano *
-                </label>
-                <Input
-                  required
-                  value={nome}
-                  onChange={(e) => setNome(e.target.value)}
-                  placeholder="Ex: Assinatura Mensal Pro"
-                />
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Nome do Produto / Plano *
+                  </label>
+                  <Input
+                    required
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    placeholder="Ex: Crachá PVC Personalizado"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground mb-1 block">
+                    Categoria *
+                  </label>
+                  <select
+                    value={categoriaId}
+                    onChange={(e) => setCategoriaId(e.target.value)}
+                    className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {categoriasProduto.map((cat) => (
+                      <option key={cat.id} value={cat.id} className="bg-card">
+                        {cat.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -605,22 +709,18 @@ export default function PaginaProdutos() {
 
                 <div>
                   <label className="text-xs font-medium text-foreground mb-1 block">
-                    Tipo de Cobrança *
+                    Unidade de Medida *
                   </label>
                   <select
-                    value={tipoCobranca}
-                    onChange={(e) => setTipoCobranca(e.target.value as any)}
+                    value={unidadeMedidaId}
+                    onChange={(e) => setUnidadeMedidaId(e.target.value)}
                     className="flex h-8 w-full rounded-md border border-input bg-background/50 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
-                    <option value="mensal" className="bg-card">
-                      Mensal (MRR)
-                    </option>
-                    <option value="a_vista" className="bg-card">
-                      À Vista (Setup / Consultoria)
-                    </option>
-                    <option value="anual" className="bg-card">
-                      Anual
-                    </option>
+                    {unidadesMedidas.map((op) => (
+                      <option key={op.id} value={op.id} className="bg-card">
+                        {op.nome} ({op.sigla})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -645,6 +745,42 @@ export default function PaginaProdutos() {
                     onChange={(e) => setDescricao(e.target.value)}
                     placeholder="Detalhes ou escopo do produto"
                   />
+                </div>
+              </div>
+
+              {/* Opção de Status do Produto: Ativo ou Inativo */}
+              <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
+                <div>
+                  <span className="text-xs font-semibold text-foreground block">
+                    Status do Produto no Catálogo
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {ativo
+                      ? 'Ativo: disponível para ser adicionado aos cards do funil.'
+                      : 'Inativo: oculto na seleção de produtos dos cards.'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAtivo(true)}
+                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${ativo
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-card text-muted-foreground border border-border hover:text-foreground'
+                      }`}
+                  >
+                    Ativo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAtivo(false)}
+                    className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${!ativo
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-card text-muted-foreground border border-border hover:text-foreground'
+                      }`}
+                  >
+                    Inativo
+                  </button>
                 </div>
               </div>
 
@@ -816,8 +952,8 @@ export default function PaginaProdutos() {
                                 campo.tipo === 'numero' || campo.tipo === 'moeda'
                                   ? 'number'
                                   : campo.tipo === 'data'
-                                  ? 'date'
-                                  : 'text'
+                                    ? 'date'
+                                    : 'text'
                               }
                               step={campo.tipo === 'moeda' ? '0.01' : undefined}
                               value={String(val)}
