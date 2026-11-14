@@ -109,12 +109,21 @@ export function KanbanBoard({
     ])
       .then(([funisDb, etapasDb, negociosDb, membrosDb]) => {
         if (ativo) {
+          const funilInicial =
+            funisDb && funisDb.length > 0
+              ? funisDb.find((f) => f.padrao) || funisDb[0]
+              : DADOS_FUNIS[0];
           if (funisDb && funisDb.length > 0) {
             setFunis(funisDb);
-            setFunilAtivo(funisDb[0]);
-            onFunilAtivoChange?.(funisDb[0].nome);
+            setFunilAtivo(funilInicial);
+            onFunilAtivoChange?.(funilInicial.nome);
           }
-          if (etapasDb && etapasDb.length > 0) setEtapas(etapasDb);
+          if (etapasDb && etapasDb.length > 0) {
+            const etapasDoFunil = etapasDb
+              .filter((e) => !e.funil_id || e.funil_id === funilInicial.id)
+              .map((e, idx) => ({ ...e, ordem: idx + 1 }));
+            setEtapas(etapasDoFunil.length > 0 ? etapasDoFunil : etapasDb);
+          }
           if (negociosDb && negociosDb.length > 0) setNegocios(negociosDb);
           if (membrosDb && membrosDb.length > 0) setMembros(membrosDb);
         }

@@ -321,7 +321,7 @@ export function ColunaPropriedades({
         {/* Campo Personalizado: Origem do Lead (Salvo em campos_personalizados no Supabase) */}
         <div>
           <label className="text-muted-foreground text-[11px] block mb-1">
-            Origem do Lead (Campo Customizado)
+            Origem do Lead
           </label>
           <select
             value={origemLead}
@@ -329,6 +329,7 @@ export function ColunaPropriedades({
               const novaOrigem = e.target.value;
               setOrigemLead(novaOrigem);
               onAtualizarNegocio({
+                origem_lead: novaOrigem,
                 campos_personalizados: {
                   ...(negocio.campos_personalizados || {}),
                   origem_lead: novaOrigem,
@@ -337,11 +338,274 @@ export function ColunaPropriedades({
             }}
             className="flex h-8 w-full rounded-md border border-input bg-card/60 px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
+            <option value="Landing Page Brinday" className="bg-card">Landing Page Brinday</option>
+            <option value="Google" className="bg-card">Google</option>
+            <option value="Instagram" className="bg-card">Instagram</option>
+            <option value="Indicação" className="bg-card">Indicação</option>
+            <option value="Feira" className="bg-card">Feira</option>
+            <option value="Prospecção Ativa" className="bg-card">Prospecção Ativa</option>
             <option value="Outbound SDR" className="bg-card">Outbound SDR</option>
             <option value="Inbound Ads" className="bg-card">Inbound Ads</option>
-            <option value="Indicação" className="bg-card">Indicação</option>
             <option value="LinkedIn Direct" className="bg-card">LinkedIn Direct</option>
           </select>
+        </div>
+
+        {/* Bloco Provisionado: Dados de Conversão, Campanha e UTMs da Landing Page */}
+        <div className="rounded-xl border border-border/70 bg-muted/20 p-3 space-y-2">
+          <div className="flex items-center justify-between border-b border-border/50 pb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+              <Tag className="h-3 w-3 text-[#E42358]" />
+              Rastreamento & Conversão (LP / UTMs)
+            </span>
+          </div>
+
+          <div className="space-y-1.5 text-[11px]">
+            <div>
+              <span className="text-[10px] text-muted-foreground block">
+                URL de Conversão:
+              </span>
+              <Input
+                value={
+                  negocio.url_conversao ||
+                  (negocio.campos_personalizados?.url_conversao as string) ||
+                  ''
+                }
+                onChange={(e) =>
+                  onAtualizarNegocio({
+                    url_conversao: e.target.value,
+                    campos_personalizados: {
+                      ...(negocio.campos_personalizados || {}),
+                      url_conversao: e.target.value,
+                    },
+                  })
+                }
+                placeholder="https://brindes.brindaypersonalizados.com.br/"
+                className="h-7 text-[11px] font-mono mt-0.5"
+              />
+            </div>
+
+            <div>
+              <span className="text-[10px] text-muted-foreground block">
+                Produto ou Categoria de Interesse:
+              </span>
+              <Input
+                value={
+                  negocio.produto_interesse ||
+                  (negocio.campos_personalizados?.produto_interesse as string) ||
+                  ''
+                }
+                onChange={(e) =>
+                  onAtualizarNegocio({
+                    produto_interesse: e.target.value,
+                    campos_personalizados: {
+                      ...(negocio.campos_personalizados || {}),
+                      produto_interesse: e.target.value,
+                    },
+                  })
+                }
+                placeholder="Ex: Crachás, Cordões, Kits Corporativos"
+                className="h-7 text-[11px] mt-0.5"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              <div>
+                <span className="text-[10px] text-muted-foreground block">Campanha:</span>
+                <Input
+                  value={
+                    negocio.campanha ||
+                    (negocio.campos_personalizados?.campanha as string) ||
+                    ''
+                  }
+                  onChange={(e) =>
+                    onAtualizarNegocio({
+                      campanha: e.target.value,
+                      campos_personalizados: {
+                        ...(negocio.campos_personalizados || {}),
+                        campanha: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="Campanha"
+                  className="h-7 text-[10px] mt-0.5"
+                />
+              </div>
+              <div>
+                <span className="text-[10px] text-muted-foreground block">Mídia:</span>
+                <Input
+                  value={
+                    negocio.midia ||
+                    (negocio.campos_personalizados?.midia as string) ||
+                    ''
+                  }
+                  onChange={(e) =>
+                    onAtualizarNegocio({
+                      midia: e.target.value,
+                      campos_personalizados: {
+                        ...(negocio.campos_personalizados || {}),
+                        midia: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="CPC / Social / Orgânico"
+                  className="h-7 text-[10px] mt-0.5"
+                />
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[10px] text-muted-foreground block">
+                Conjunto de Anúncios (Ad Set):
+              </span>
+              <Input
+                value={
+                  negocio.conjunto_anuncios ||
+                  (negocio.campos_personalizados?.conjunto_anuncios as string) ||
+                  ''
+                }
+                onChange={(e) =>
+                  onAtualizarNegocio({
+                    conjunto_anuncios: e.target.value,
+                    campos_personalizados: {
+                      ...(negocio.campos_personalizados || {}),
+                      conjunto_anuncios: e.target.value,
+                    },
+                  })
+                }
+                placeholder="Conjunto de anúncios"
+                className="h-7 text-[10px] mt-0.5"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-border/40">
+              <div>
+                <span className="text-[9px] font-mono text-muted-foreground block">
+                  utm_source
+                </span>
+                <Input
+                  value={
+                    negocio.utm_source ||
+                    (negocio.campos_personalizados?.utm_source as string) ||
+                    ''
+                  }
+                  onChange={(e) =>
+                    onAtualizarNegocio({
+                      utm_source: e.target.value,
+                      campos_personalizados: {
+                        ...(negocio.campos_personalizados || {}),
+                        utm_source: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="google / meta"
+                  className="h-6 text-[10px] font-mono"
+                />
+              </div>
+              <div>
+                <span className="text-[9px] font-mono text-muted-foreground block">
+                  utm_medium
+                </span>
+                <Input
+                  value={
+                    negocio.utm_medium ||
+                    (negocio.campos_personalizados?.utm_medium as string) ||
+                    ''
+                  }
+                  onChange={(e) =>
+                    onAtualizarNegocio({
+                      utm_medium: e.target.value,
+                      campos_personalizados: {
+                        ...(negocio.campos_personalizados || {}),
+                        utm_medium: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="cpc / stories"
+                  className="h-6 text-[10px] font-mono"
+                />
+              </div>
+              <div>
+                <span className="text-[9px] font-mono text-muted-foreground block">
+                  utm_campaign
+                </span>
+                <Input
+                  value={
+                    negocio.utm_campaign ||
+                    (negocio.campos_personalizados?.utm_campaign as string) ||
+                    ''
+                  }
+                  onChange={(e) =>
+                    onAtualizarNegocio({
+                      utm_campaign: e.target.value,
+                      campos_personalizados: {
+                        ...(negocio.campos_personalizados || {}),
+                        utm_campaign: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="brindes_2026"
+                  className="h-6 text-[10px] font-mono"
+                />
+              </div>
+              <div>
+                <span className="text-[9px] font-mono text-muted-foreground block">
+                  utm_content
+                </span>
+                <Input
+                  value={
+                    negocio.utm_content ||
+                    (negocio.campos_personalizados?.utm_content as string) ||
+                    ''
+                  }
+                  onChange={(e) =>
+                    onAtualizarNegocio({
+                      utm_content: e.target.value,
+                      campos_personalizados: {
+                        ...(negocio.campos_personalizados || {}),
+                        utm_content: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="criativo_01"
+                  className="h-6 text-[10px] font-mono"
+                />
+              </div>
+              <div className="col-span-2">
+                <span className="text-[9px] font-mono text-muted-foreground block">
+                  utm_term
+                </span>
+                <Input
+                  value={
+                    negocio.utm_term ||
+                    (negocio.campos_personalizados?.utm_term as string) ||
+                    ''
+                  }
+                  onChange={(e) =>
+                    onAtualizarNegocio({
+                      utm_term: e.target.value,
+                      campos_personalizados: {
+                        ...(negocio.campos_personalizados || {}),
+                        utm_term: e.target.value,
+                      },
+                    })
+                  }
+                  placeholder="palavra-chave"
+                  className="h-6 text-[10px] font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1.5 border-t border-border/40 text-[10px] text-muted-foreground">
+              <span>Data/Hora Cadastro:</span>
+              <span className="font-mono text-foreground">
+                {formatarData(
+                  negocio.data_hora_cadastro ||
+                  (negocio.campos_personalizados?.data_hora_cadastro as string) ||
+                  negocio.ultima_atividade_em
+                )}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

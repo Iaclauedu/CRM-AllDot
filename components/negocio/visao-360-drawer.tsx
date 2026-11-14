@@ -220,7 +220,10 @@ export function Visao360Drawer({
 
           {/* Coluna Direita (25%): Contato Principal e Empresa */}
           <div className="md:col-span-3 overflow-y-auto p-4 bg-card/40">
-            <ColunaAssociacoes negocio={negocio} />
+            <ColunaAssociacoes
+              negocio={negocio}
+              onAtualizarNegocio={handleAtualizarCampos}
+            />
           </div>
         </div>
       </div>

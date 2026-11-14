@@ -21,6 +21,8 @@ import {
   Palette,
   Copy,
   RefreshCw,
+  Globe,
+  Mail,
 } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
@@ -29,6 +31,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { PersonalizacaoBranding } from '@/components/configuracoes/personalizacao-branding';
+import { IntegracaoLandingPage } from '@/components/configuracoes/integracao-landing-page';
+import { CentralAutomacoesEmail } from '@/components/automacoes/central-automacoes-email';
 import {
   DADOS_ORGANIZACAO,
   DADOS_MEMBROS,
@@ -54,7 +58,7 @@ import { ModalConvidarMembro } from '@/components/configuracoes/modal-convidar-m
 import { UserPlus } from 'lucide-react';
 
 export default function PaginaConfiguracoes() {
-  const [abaAtiva, setAbaAtiva] = React.useState<'branding' | 'funil' | 'workspace'>('branding');
+  const [abaAtiva, setAbaAtiva] = React.useState<'branding' | 'funil' | 'workspace' | 'landing_page' | 'automacoes_email'>('branding');
   const [nome, setNome] = React.useState(DADOS_ORGANIZACAO.nome);
   const [cnpj, setCnpj] = React.useState(DADOS_ORGANIZACAO.cnpj);
   const [plano, setPlano] = React.useState<string>(DADOS_ORGANIZACAO.plano);
@@ -64,6 +68,7 @@ export default function PaginaConfiguracoes() {
 
   // Estados para Gestão de Funis e Etapas
   const [funis, setFunis] = React.useState<Funil[]>(DADOS_FUNIS);
+  const [todasEtapas, setTodasEtapas] = React.useState<EtapaFunil[]>(DADOS_ETAPAS);
   const [funilSelecionadoId, setFunilSelecionadoId] = React.useState<string>(DADOS_FUNIS[0].id);
   const [etapas, setEtapas] = React.useState<EtapaFunil[]>(DADOS_ETAPAS);
   const [salvandoEtapas, setSalvandoEtapas] = React.useState(false);
@@ -96,15 +101,30 @@ export default function PaginaConfiguracoes() {
         setCarregandoWorkspace(false);
       });
 
-    buscarFunisDoBanco().then((f) => {
-      if (f && f.length > 0) {
-        setFunis(f);
-        setFunilSelecionadoId(f[0].id);
-        buscarEtapasDoBanco(f[0].id).then((e) => {
-          if (e && e.length > 0) setEtapas(e);
-        });
+    Promise.all([buscarFunisDoBanco(), buscarEtapasDoBanco()]).then(
+      ([f, todasEt]) => {
+        const listaFunis = f && f.length > 0 ? f : DADOS_FUNIS;
+        setFunis(listaFunis);
+        if (todasEt && todasEt.length > 0) {
+          setTodasEtapas(todasEt);
+        }
+        const funilInicial =
+          listaFunis.find((item) => item.padrao) || listaFunis[0];
+        setFunilSelecionadoId(funilInicial.id);
+
+        const filtradas = (todasEt || [])
+          .filter((e) => e.funil_id === funilInicial.id)
+          .map((e, idx) => ({ ...e, ordem: idx + 1 }));
+
+        if (filtradas.length > 0) {
+          setEtapas(filtradas);
+        } else {
+          buscarEtapasDoBanco(funilInicial.id).then((e) => {
+            if (e && e.length > 0) setEtapas(e);
+          });
+        }
       }
-    });
+    );
 
     buscarMembrosDoBanco().then((m) => {
       if (m && m.length > 0) setMembros(m);
@@ -114,7 +134,13 @@ export default function PaginaConfiguracoes() {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab');
-      if (tabParam === 'workspace' || tabParam === 'funil' || tabParam === 'branding') {
+      if (
+        tabParam === 'workspace' ||
+        tabParam === 'funil' ||
+        tabParam === 'branding' ||
+        tabParam === 'landing_page' ||
+        tabParam === 'automacoes_email'
+      ) {
         setAbaAtiva(tabParam);
       }
     }
@@ -135,8 +161,14 @@ export default function PaginaConfiguracoes() {
 
   const handleTrocarFunil = async (novoFunilId: string) => {
     setFunilSelecionadoId(novoFunilId);
+    const etapasEmMemoria = todasEtapas
+      .filter((e) => e.funil_id === novoFunilId)
+      .map((e, idx) => ({ ...e, ordem: idx + 1 }));
+    if (etapasEmMemoria.length > 0) {
+      setEtapas(etapasEmMemoria);
+    }
     const etapasDb = await buscarEtapasDoBanco(novoFunilId);
-    if (etapasDb) {
+    if (etapasDb && etapasDb.length > 0) {
       setEtapas(etapasDb);
     }
   };
@@ -421,10 +453,44 @@ export default function PaginaConfiguracoes() {
               <Building2 className="h-4 w-4" />
               <span>Workspace & Equipe</span>
             </button>
+
+            <button
+              id="tab-landing-page"
+              type="button"
+              onClick={() => setAbaAtiva('landing_page')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
+                abaAtiva === 'landing_page'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              <Globe className="h-4 w-4" />
+              <span>Landing Page & Webhook</span>
+            </button>
+
+            <button
+              id="tab-automacoes-email"
+              type="button"
+              onClick={() => setAbaAtiva('automacoes_email')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
+                abaAtiva === 'automacoes_email'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+              }`}
+            >
+              <Mail className="h-4 w-4" />
+              <span>Automações de E-mail & SMTP</span>
+            </button>
           </div>
 
           {/* Conteúdo Aba: Personalização de Marca (White-Label) */}
           {abaAtiva === 'branding' && <PersonalizacaoBranding />}
+
+          {/* Conteúdo Aba: Integração Landing Page */}
+          {abaAtiva === 'landing_page' && <IntegracaoLandingPage />}
+
+          {/* Conteúdo Aba: Automações de E-mail, Templates e Servidor SMTP */}
+          {abaAtiva === 'automacoes_email' && <CentralAutomacoesEmail />}
 
           {/* Conteúdo Aba: Workspace e Membros */}
           {abaAtiva === 'workspace' && (

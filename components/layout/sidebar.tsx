@@ -13,6 +13,8 @@ import {
   HelpCircle,
   Compass,
   Zap,
+  Mail,
+  Megaphone,
   LogOut,
   Loader2,
   AlertTriangle,
@@ -55,7 +57,9 @@ export function Sidebar() {
       { titulo: 'Carteira de Empresas', href: '/empresas', icone: Building2, atalho: '3' },
       { titulo: 'Catálogo de Produtos', href: '/produtos', icone: Package, atalho: '4' },
       { titulo: 'Analytics & Forecast', href: '/dashboard', icone: BarChart3, atalho: '5' },
-      { titulo: 'Configurações', href: '/configuracoes', icone: Settings, atalho: '6' },
+      { titulo: 'Automação de E-mails', href: '/automacoes', icone: Mail, atalho: '6' },
+      { titulo: 'Campanhas de E-mail', href: '/campanhas', icone: Megaphone, atalho: '7' },
+      { titulo: 'Configurações', href: '/configuracoes', icone: Settings, atalho: '8' },
     ],
     []
   );
@@ -121,16 +125,15 @@ export function Sidebar() {
                 style={
                   ativo
                     ? {
-                        backgroundColor: branding.corPrimaria,
-                        boxShadow: `0 4px 14px ${branding.corPrimaria}40`,
-                      }
+                      backgroundColor: branding.corPrimaria,
+                      boxShadow: `0 4px 14px ${branding.corPrimaria}40`,
+                    }
                     : undefined
                 }
-                className={`relative group flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 ${
-                  ativo
+                className={`relative group flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 ${ativo
                     ? 'text-white'
                     : 'text-slate-400 hover:text-white hover:bg-white/10'
-                }`}
+                  }`}
               >
                 <Icone className={`h-5 w-5 shrink-0 transition-transform duration-200 ${ativo ? 'scale-110' : 'group-hover:scale-110'}`} />
 
