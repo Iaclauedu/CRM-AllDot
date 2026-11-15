@@ -5,8 +5,8 @@ export async function verificarAutorizacaoApi(
   req: NextRequest,
   opcoes?: { permitirCronSecret?: boolean }
 ): Promise<{ autorizado: boolean; motivo?: string }> {
-  // Em desenvolvimento local sem ENFORCE_API_AUTH=true, permite operar sem sessão obrigatória
-  if (process.env.ENFORCE_API_AUTH !== 'true') {
+  // Em desenvolvimento local sem ENFORCE_API_AUTH=true, permite operar sem sessão obrigatória; em produção exige sessão sempre
+  if (process.env.NODE_ENV !== 'production' && process.env.ENFORCE_API_AUTH !== 'true') {
     return { autorizado: true };
   }
 

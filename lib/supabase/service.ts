@@ -60,9 +60,37 @@ export interface OrganizacaoWorkspace {
 }
 
 let clienteAnonSingleton: any = null;
+let clienteServiceRoleSingleton: any = null;
 let autorPadraoIdCache: string | null = null;
 
+function criarClienteServidorPrivilegiado() {
+  if (typeof window !== 'undefined') return null;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey ||
+    serviceRoleKey.includes('sua-chave') ||
+    serviceRoleKey.includes('placeholder')
+  ) {
+    return null;
+  }
+
+  if (clienteServiceRoleSingleton) return clienteServiceRoleSingleton;
+
+  clienteServiceRoleSingleton = createSupabaseClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  }) as any;
+
+  return clienteServiceRoleSingleton;
+}
+
 function criarClienteAnonStateless() {
+  // No servidor (webhooks, tracking e rotas internas), usa service_role para operar sem depender de políticas anon
+  const clientePrivilegiado = criarClienteServidorPrivilegiado();
+  if (clientePrivilegiado) return clientePrivilegiado;
+
   if (clienteAnonSingleton) return clienteAnonSingleton;
 
   const supabaseUrl =

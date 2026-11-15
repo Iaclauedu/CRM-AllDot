@@ -30,9 +30,9 @@ function ConteudoLogin() {
 
   // Estados do formulário
   const [modo, setModo] = React.useState<'login' | 'cadastro'>('login');
-  const [email, setEmail] = React.useState('carlos.admin@acme.com');
-  const [senha, setSenha] = React.useState('senha123');
-  const [nome, setNome] = React.useState('Carlos Silva');
+  const [email, setEmail] = React.useState('');
+  const [senha, setSenha] = React.useState('');
+  const [nome, setNome] = React.useState('');
   const [mostrarSenha, setMostrarSenha] = React.useState(false);
   const [lembrar, setLembrar] = React.useState(true);
 

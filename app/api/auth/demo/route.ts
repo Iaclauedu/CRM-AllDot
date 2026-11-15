@@ -10,6 +10,10 @@ const DEMO_USERS: Record<string, { nome: string; cargo: 'admin' | 'gestor' | 've
 };
 
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ erro: 'Recurso indisponível.' }, { status: 404 });
+  }
+
   try {
     const body = await request.json();
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
