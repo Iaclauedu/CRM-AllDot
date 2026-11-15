@@ -38,8 +38,8 @@ import {
 import { formatarData } from '@/lib/utils';
 
 export default function PaginaEmpresas() {
-  const [empresas, setEmpresas] = React.useState<Empresa[]>(DADOS_EMPRESAS);
-  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
+  const [empresas, setEmpresas] = React.useState<Empresa[]>([]);
+  const [membros, setMembros] = React.useState<Membro[]>([]);
   const [busca, setBusca] = React.useState('');
   const [modalAberta, setModalAberta] = React.useState(false);
   const [empresaEditando, setEmpresaEditando] = React.useState<Empresa | null>(null);
@@ -104,11 +104,11 @@ export default function PaginaEmpresas() {
       setEmpresas((prev) =>
         prev.map((item) => (item.id === atualizada.id ? atualizada : item))
       );
-      exibirFeedback(`Cadastro "${atualizada.nome}" atualizado no Supabase!`);
+      exibirFeedback(`Cadastro "${atualizada.nome}" atualizado com sucesso!`);
     } else {
       const empresaCriada = await criarEmpresaNoBanco(dados);
       setEmpresas((prev) => [empresaCriada, ...prev]);
-      exibirFeedback(`Cadastro "${empresaCriada.nome}" salvo com sucesso no Supabase!`);
+      exibirFeedback(`Cadastro "${empresaCriada.nome}" salvo com sucesso!`);
     }
   };
 
@@ -132,7 +132,7 @@ export default function PaginaEmpresas() {
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Cadastro de Pessoa Jurídica (CNPJ com ReceitaWS) e Pessoa Física (CPF) sincronizado no Supabase.
+              Cadastro de Pessoa Jurídica (CNPJ com ReceitaWS) e Pessoa Física (CPF).
             </p>
           </div>
 

@@ -32,9 +32,9 @@ import {
 import { formatarMoeda } from '@/lib/utils';
 
 export default function PaginaDashboard() {
-  const [negocios, setNegocios] = React.useState<Negocio[]>(DADOS_NEGOCIOS);
-  const [etapas, setEtapas] = React.useState<EtapaFunil[]>(DADOS_ETAPAS);
-  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
+  const [negocios, setNegocios] = React.useState<Negocio[]>([]);
+  const [etapas, setEtapas] = React.useState<EtapaFunil[]>([]);
+  const [membros, setMembros] = React.useState<Membro[]>([]);
 
   React.useEffect(() => {
     let ativo = true;

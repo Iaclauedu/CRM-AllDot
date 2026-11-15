@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
               inviteError.message.toLowerCase().includes('smtp')
             ) {
               avisoSmtp =
-                'O limite de envio do servidor de e-mails padrão do banco foi atingido ou o SMTP precisa ser configurado.';
+                'O limite de envio do servidor de e-mails padrão foi atingido ou o SMTP precisa ser configurado.';
             }
           }
         }
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
             resetError.message.toLowerCase().includes('exceeded')
           ) {
             avisoSmtp =
-              'O servidor de e-mails padrão do banco atingiu o limite por hora. Utilize o link direto de ativação abaixo.';
+              'O servidor de e-mails padrão atingiu o limite por hora. Utilize o link direto de ativação abaixo.';
           }
         }
       } catch (err: unknown) {
@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
 
     if (!emailEnviado && !avisoSmtp) {
       avisoSmtp =
-        'Configure a SUPABASE_SERVICE_ROLE_KEY no .env.local (e/ou SMTP no Supabase Auth) para criar o usuário em auth.users e disparar o convite oficial.';
+        'Configure o serviço de autenticação e/ou SMTP no servidor para disparar o convite automático.';
     }
 
     return NextResponse.json({

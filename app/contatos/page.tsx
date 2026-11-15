@@ -33,8 +33,8 @@ import {
 import { formatarData, formatarTelefoneWhatsApp } from '@/lib/utils';
 
 export default function PaginaContatos() {
-  const [contatos, setContatos] = React.useState<Contato[]>(DADOS_CONTATOS);
-  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
+  const [contatos, setContatos] = React.useState<Contato[]>([]);
+  const [membros, setMembros] = React.useState<Membro[]>([]);
   const [busca, setBusca] = React.useState('');
   const [modalAberta, setModalAberta] = React.useState(false);
   const [copiadoId, setCopiadoId] = React.useState<string | null>(null);

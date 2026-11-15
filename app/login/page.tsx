@@ -72,7 +72,7 @@ function ConteudoLogin() {
   const traduzirErroBancoDados = (erro: string): string => {
     const lower = erro.toLowerCase();
     if (lower.includes('finding user') || lower.includes('database error finding user')) {
-      return 'Usuário não localizado no banco de dados. Verifique suas credenciais ou utilize o modo de acesso rápido.';
+      return 'Usuário não localizado. Verifique suas credenciais ou utilize o modo de acesso rápido.';
     }
     if (lower.includes('invalid login credentials')) {
       return 'E-mail ou senha incorretos.';
@@ -81,13 +81,13 @@ function ConteudoLogin() {
       return 'E-mail cadastrado, mas pendente de confirmação. Verifique sua caixa de entrada.';
     }
     if (lower.includes('user already registered')) {
-      return 'Este e-mail já está cadastrado no banco de dados. Tente entrar com sua senha.';
+      return 'Este e-mail já está cadastrado. Tente entrar com sua senha.';
     }
     if (lower.includes('password should be at least')) {
       return 'A senha deve conter no mínimo 6 caracteres.';
     }
     if (lower.includes('database error querying schema') || lower.includes('schema')) {
-      return 'O schema do banco de dados está em sincronização. Utilize o Acesso Demo ou crie uma nova conta.';
+      return 'O sistema está em sincronização. Utilize o Acesso Demo ou crie uma nova conta.';
     }
     return erro;
   };
@@ -100,31 +100,38 @@ function ConteudoLogin() {
     setMensagemSucesso(null);
 
     const emailTrim = email.trim().toLowerCase();
-    const isKnownMember = [
-      'carlos.admin@acme.com',
-      'mariana.gestora@acme.com',
-      'lucas.vendedor@acme.com',
-      'claudio.barbosa@acme.com',
-    ].includes(emailTrim) || emailTrim.includes('claudio.barbosa');
+    const isDemoAccount =
+      [
+        'carlos.admin@acme.com',
+        'mariana.gestora@acme.com',
+        'lucas.vendedor@acme.com',
+      ].includes(emailTrim) && senha === 'senha123';
 
     try {
       const supabase = createClient();
-      const { data, error } = await supabase.auth.signInWithPassword({
+      let { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: senha,
       });
 
-      if (error) {
-        // Se for perfil de membro da equipe ou convite
-        if (isKnownMember) {
-          setMensagemSucesso(`Acesso concedido como ${nome || 'Usuário'}! Entrando no pipeline...`);
-          setTimeout(() => {
-            router.push('/');
-            router.refresh();
-          }, 400);
-          return;
-        }
+      if (error && isDemoAccount) {
+        const resDemo = await fetch('/api/auth/demo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailTrim, password: senha }),
+        });
 
+        if (resDemo.ok) {
+          const retry = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password: senha,
+          });
+          data = retry.data;
+          error = retry.error;
+        }
+      }
+
+      if (error) {
         setMensagemErro(traduzirErroBancoDados(error.message));
         setCarregando(false);
         return;
@@ -138,16 +145,8 @@ function ConteudoLogin() {
         }, 600);
       }
     } catch (err: any) {
-      if (isKnownMember) {
-        setMensagemSucesso(`Acesso concedido como ${nome || 'Usuário'}! Entrando no pipeline...`);
-        setTimeout(() => {
-          router.push('/');
-          router.refresh();
-        }, 400);
-        return;
-      }
       console.error('Erro de autenticação:', err);
-      setMensagemErro(err.message || 'Erro inesperado ao conectar ao banco de dados.');
+      setMensagemErro(err.message || 'Erro inesperado ao realizar login.');
       setCarregando(false);
     }
   };
@@ -189,7 +188,7 @@ function ConteudoLogin() {
 
       if (data?.user && !data.session) {
         setMensagemSucesso(
-          'Conta criada com sucesso no banco de dados! Um e-mail de confirmação foi enviado. Você também pode acessar diretamente via modo Demo abaixo.'
+          'Conta criada com sucesso! Um e-mail de confirmação foi enviado. Você também pode acessar diretamente via modo Demo abaixo.'
         );
         setCarregando(false);
       }
@@ -237,22 +236,17 @@ function ConteudoLogin() {
     }
   };
 
+  // Atalhos rápidos visíveis apenas em ambiente de desenvolvimento local
+  const mostrarAtalhosDev =
+    process.env.NODE_ENV === 'development' &&
+    process.env.NEXT_PUBLIC_DEV_QUICK_LOGIN === 'true';
+
   // Preenchimento de Credenciais de Demonstração
   const preencherDemo = (demoEmail: string, demoNome: string) => {
     setEmail(demoEmail);
     setSenha('senha123');
     setNome(demoNome);
     setMensagemErro(null);
-  };
-
-  // Entrada Instantânea como Demo (não bloqueia se o schema do Supabase ainda estiver em seed)
-  const handleEntrarDemo = () => {
-    setCarregando(true);
-    setMensagemSucesso('Entrando no modo demonstração com dados locais...');
-    setTimeout(() => {
-      router.push('/');
-      router.refresh();
-    }, 400);
   };
 
   return (
@@ -266,7 +260,7 @@ function ConteudoLogin() {
         {/* Topo: Logo & Badge de Versão */}
         <div className="relative z-10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <AllDotLogo variant="white" size="lg" />
+            <AllDotLogo variant="white" size="lg" ignorarCustomizacao />
             <span className="rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 text-[11px] font-mono font-semibold text-slate-300">
               v1.0 Pro
             </span>
@@ -285,7 +279,7 @@ function ConteudoLogin() {
           </h2>
 
           <p className="text-sm text-slate-300 leading-relaxed">
-            Plataforma multi-tenant com quadro Kanban em tempo real, gestão de carteira de empresas, catálogo de produtos com MRR e integração nativa com banco de dados seguro & RLS.
+            Plataforma multi-tenant com quadro Kanban em tempo real, gestão de carteira de empresas, catálogo de produtos com MRR e controle de acesso por perfil.
           </p>
 
           {/* Cards Rápidos de Recursos */}
@@ -303,7 +297,7 @@ function ConteudoLogin() {
             <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-3.5 backdrop-blur-sm">
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
                 <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                <span>Segurança do Banco de Dados</span>
+                <span>Segurança & Controle de Acesso</span>
               </div>
               <p className="mt-1 text-[11px] text-slate-400">
                 Autenticação JWT, Row Level Security e isolamento estrito por organização.
@@ -327,7 +321,7 @@ function ConteudoLogin() {
         <div className="w-full max-w-md space-y-6">
           {/* Header Mobile com Logo */}
           <div className="lg:hidden flex items-center justify-between mb-4">
-            <AllDotLogo variant="white" size="md" />
+            <AllDotLogo variant="white" size="md" ignorarCustomizacao />
           </div>
 
           {/* Card Principal */}
@@ -369,12 +363,12 @@ function ConteudoLogin() {
             {/* Título e Subtítulo */}
             <div className="mb-6">
               <h1 className="text-xl font-bold tracking-tight text-white">
-                {modo === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta no Banco de Dados'}
+                {modo === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
               </h1>
               <p className="text-xs text-slate-400 mt-1">
                 {modo === 'login'
                   ? 'Informe seu e-mail e senha cadastrados para acessar o pipeline.'
-                  : 'Cadastre suas credenciais para criar um novo usuário no banco de dados.'}
+                  : 'Cadastre suas credenciais para criar um novo usuário no sistema.'}
               </p>
             </div>
 
@@ -497,7 +491,7 @@ function ConteudoLogin() {
                 {carregando ? (
                   <>
                     <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    <span>Conectando ao banco de dados...</span>
+                    <span>Autenticando...</span>
                   </>
                 ) : modo === 'login' ? (
                   <>
@@ -513,62 +507,54 @@ function ConteudoLogin() {
               </Button>
             </form>
 
-            {/* Separador de Demonstração */}
-            <div className="relative my-5 text-center">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-slate-800" />
-              </div>
-              <span className="relative bg-slate-900 px-3 text-[10px] uppercase font-mono tracking-wider text-slate-400">
-                Atalhos Rápidos de Acesso
-              </span>
-            </div>
+            {mostrarAtalhosDev && (
+              <>
+                {/* Separador de Demonstração (apenas desenvolvimento local) */}
+                <div className="relative my-5 text-center">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-800" />
+                  </div>
+                  <span className="relative bg-slate-900 px-3 text-[10px] uppercase font-mono tracking-wider text-slate-400">
+                    Atalhos Rápidos de Acesso (Dev)
+                  </span>
+                </div>
 
-            {/* Preenchimento Rápido com Perfis do Seed */}
-            <div className="space-y-2">
-              <div className="text-[11px] text-slate-400 text-center mb-1">
-                Preencher credenciais de teste (senha padrão: <code className="font-mono text-slate-300">senha123</code>):
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => preencherDemo('carlos.admin@acme.com', 'Carlos Silva (Admin)')}
-                  className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-center hover:border-slate-700 hover:bg-slate-800 transition-colors"
-                >
-                  <div className="text-[11px] font-bold text-slate-200 truncate">Carlos</div>
-                  <div className="text-[9px] text-[#E42358] font-mono">Admin</div>
-                </button>
+                {/* Preenchimento Rápido com Perfis do Seed */}
+                <div className="space-y-2">
+                  <div className="text-[11px] text-slate-400 text-center mb-1">
+                    Preencher credenciais de teste (senha padrão: <code className="font-mono text-slate-300">senha123</code>):
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => preencherDemo('carlos.admin@acme.com', 'Carlos Silva (Admin)')}
+                      className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-center hover:border-slate-700 hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="text-[11px] font-bold text-slate-200 truncate">Carlos</div>
+                      <div className="text-[9px] text-[#E42358] font-mono">Admin</div>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => preencherDemo('mariana.gestora@acme.com', 'Mariana Souza (Gestora)')}
-                  className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-center hover:border-slate-700 hover:bg-slate-800 transition-colors"
-                >
-                  <div className="text-[11px] font-bold text-slate-200 truncate">Mariana</div>
-                  <div className="text-[9px] text-emerald-400 font-mono">Gestora</div>
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => preencherDemo('mariana.gestora@acme.com', 'Mariana Souza (Gestora)')}
+                      className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-center hover:border-slate-700 hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="text-[11px] font-bold text-slate-200 truncate">Mariana</div>
+                      <div className="text-[9px] text-emerald-400 font-mono">Gestora</div>
+                    </button>
 
-                <button
-                  type="button"
-                  onClick={() => preencherDemo('lucas.vendedor@acme.com', 'Lucas Vendas (Closer)')}
-                  className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-center hover:border-slate-700 hover:bg-slate-800 transition-colors"
-                >
-                  <div className="text-[11px] font-bold text-slate-200 truncate">Lucas</div>
-                  <div className="text-[9px] text-blue-400 font-mono">Closer</div>
-                </button>
-              </div>
-
-              {/* Acesso Instantâneo Demo */}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleEntrarDemo}
-                disabled={carregando}
-                className="w-full h-9 mt-2 text-xs border-slate-800 bg-slate-950/40 text-slate-300 hover:text-white hover:bg-slate-800/80 gap-2"
-              >
-                <span>Acessar Diretamente (Modo Demonstração)</span>
-                <ArrowRight className="h-3.5 w-3.5 text-slate-500" />
-              </Button>
-            </div>
+                    <button
+                      type="button"
+                      onClick={() => preencherDemo('lucas.vendedor@acme.com', 'Lucas Vendas (Closer)')}
+                      className="rounded-lg border border-slate-800 bg-slate-950/60 p-2 text-center hover:border-slate-700 hover:bg-slate-800 transition-colors"
+                    >
+                      <div className="text-[11px] font-bold text-slate-200 truncate">Lucas</div>
+                      <div className="text-[9px] text-blue-400 font-mono">Closer</div>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Links Auxiliares */}
             <div className="mt-6 pt-4 border-t border-slate-800/80 text-center text-xs text-slate-400 flex items-center justify-between">

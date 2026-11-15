@@ -721,8 +721,13 @@ export async function buscarNegociosDoBanco(): Promise<Negocio[]> {
       }
     }
 
-    if (error || !data || data.length === 0) {
-      return DADOS_NEGOCIOS;
+    if (error) {
+      console.warn('Erro ao buscar negócios no Supabase:', error.message);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
     }
 
     const agora = new Date();
@@ -865,8 +870,8 @@ export async function buscarNegociosDoBanco(): Promise<Negocio[]> {
       };
     });
   } catch (err) {
-    console.warn('Fallback para negócios mock:', err);
-    return DADOS_NEGOCIOS;
+    console.warn('Erro ao buscar negócios no Supabase:', err);
+    return [];
   }
 }
 
@@ -1225,8 +1230,13 @@ export async function buscarContatosDoBanco(): Promise<Contato[]> {
       }
     }
 
-    if (error || !data || data.length === 0) {
-      return DADOS_CONTATOS;
+    if (error) {
+      console.warn('Erro ao buscar contatos no Supabase:', error.message);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
     }
 
     return data.map((c: any) => ({
@@ -1241,8 +1251,8 @@ export async function buscarContatosDoBanco(): Promise<Contato[]> {
       criado_em: c.criado_em,
     }));
   } catch (err) {
-    console.warn('Fallback para contatos mock:', err);
-    return DADOS_CONTATOS;
+    console.warn('Erro ao buscar contatos no Supabase:', err);
+    return [];
   }
 }
 
@@ -1309,8 +1319,13 @@ export async function buscarEmpresasDoBanco(): Promise<Empresa[]> {
       }
     }
 
-    if (error || !data || data.length === 0) {
-      return DADOS_EMPRESAS;
+    if (error) {
+      console.warn('Erro ao buscar empresas no Supabase:', error.message);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
     }
 
     return data.map((e: any) => {
@@ -1344,8 +1359,8 @@ export async function buscarEmpresasDoBanco(): Promise<Empresa[]> {
       };
     });
   } catch (err) {
-    console.warn('Fallback para empresas mock:', err);
-    return DADOS_EMPRESAS;
+    console.warn('Erro ao buscar empresas no Supabase:', err);
+    return [];
   }
 }
 
@@ -1814,7 +1829,6 @@ export async function buscarCategoriasProdutoDoBanco(): Promise<CategoriaProduto
     let { data, error } = await supabase
       .from('categoria_produto')
       .select('*')
-      .eq('ativo', true)
       .order('ordem', { ascending: true });
 
     if (error || !data || data.length === 0) {
@@ -1822,7 +1836,6 @@ export async function buscarCategoriasProdutoDoBanco(): Promise<CategoriaProduto
       const resAnon = await supabaseAnon
         .from('categoria_produto')
         .select('*')
-        .eq('ativo', true)
         .order('ordem', { ascending: true });
 
       if (resAnon.data && resAnon.data.length > 0) {
@@ -1840,7 +1853,7 @@ export async function buscarCategoriasProdutoDoBanco(): Promise<CategoriaProduto
       }));
     }
   } catch (err) {
-    console.warn('Fallback para categorias de produto padrão:', err);
+    console.warn('Erro ao buscar categorias de produto:', err);
   }
   return DADOS_CATEGORIAS_PRODUTO;
 }
@@ -1883,8 +1896,13 @@ export async function buscarProdutosDoBanco(): Promise<Produto[]> {
       }
     }
 
-    if (error || !data || data.length === 0) {
-      return DADOS_PRODUTOS;
+    if (error) {
+      console.warn('Erro ao buscar produtos no Supabase:', error.message);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
     }
 
     return data.map((p: any) => {
@@ -1929,8 +1947,8 @@ export async function buscarProdutosDoBanco(): Promise<Produto[]> {
       };
     });
   } catch (err) {
-    console.warn('Fallback para produtos mock:', err);
-    return DADOS_PRODUTOS;
+    console.warn('Erro ao buscar produtos no Supabase:', err);
+    return [];
   }
 }
 
@@ -2017,73 +2035,56 @@ export async function criarProdutoNoBanco(novo: Partial<Produto>): Promise<Produ
 export async function atualizarProdutoNoBanco(
   produtoId: string,
   dados: Partial<Produto>
-): Promise<boolean> {
+): Promise<{ sucesso: boolean; erro?: string }> {
   const camposCustomLimpos = { ...(dados.campos_personalizados || {}) };
   delete camposCustomLimpos._imagem_url;
   delete camposCustomLimpos._unidade_medida;
   delete camposCustomLimpos.unidade_medida;
 
-  const updatePayload: any = {
-    atualizado_em: new Date().toISOString(),
+  const payloadDados: Partial<Produto> = {
+    ...dados,
+    campos_personalizados:
+      dados.campos_personalizados !== undefined ? camposCustomLimpos : undefined,
   };
 
-  if (dados.nome !== undefined) updatePayload.nome = dados.nome;
-  if (dados.descricao !== undefined) updatePayload.descricao = dados.descricao;
-  if (dados.codigo_sku !== undefined) updatePayload.codigo_sku = dados.codigo_sku;
-  if (dados.valor !== undefined) updatePayload.valor = dados.valor;
-  if (dados.ativo !== undefined) updatePayload.ativo = dados.ativo;
   if (dados.unidades_medidas !== undefined || dados.unidade_medida !== undefined) {
     const unidadeEncontrada = DADOS_UNIDADES_MEDIDAS.find(
       (u) => u.id === dados.unidades_medidas || u.nome === dados.unidade_medida
     );
-    updatePayload.unidades_medidas =
+    payloadDados.unidades_medidas =
       dados.unidades_medidas || unidadeEncontrada?.id || DADOS_UNIDADES_MEDIDAS[0].id;
   }
+
   if (dados.categoria_produto !== undefined || dados.categoria_nome !== undefined) {
     const categoriaEncontrada = DADOS_CATEGORIAS_PRODUTO.find(
       (c) => c.id === dados.categoria_produto || c.nome === dados.categoria_nome
     );
-    updatePayload.categoria_produto =
+    payloadDados.categoria_produto =
       dados.categoria_produto || categoriaEncontrada?.id || DADOS_CATEGORIAS_PRODUTO[0].id;
-  }
-  if (dados.campos_personalizados !== undefined || dados.imagem_url !== undefined) {
-    updatePayload.campos_personalizados = {
-      ...camposCustomLimpos,
-      ...(dados.imagem_url ? { _imagem_url: dados.imagem_url } : {}),
-    };
   }
 
   try {
-    const supabase = createClient() as any;
-    const { data, error } = await supabase
-      .from('produtos')
-      .update(updatePayload)
-      .eq('id', produtoId)
-      .select();
+    const res = await fetch('/api/produtos', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ produtoId, dados: payloadDados }),
+    });
 
-    if (error || !data || data.length === 0) {
-      const supabaseAnon = criarClienteAnonStateless();
-      const { error: errAnon } = await supabaseAnon
-        .from('produtos')
-        .update(updatePayload)
-        .eq('id', produtoId);
-      if (
-        errAnon &&
-        (errAnon.message?.includes('unidades_medidas') ||
-          errAnon.message?.includes('categoria_produto'))
-      ) {
-        const {
-          unidades_medidas: _omitUn,
-          categoria_produto: _omitCat,
-          ...payloadSemFk
-        } = updatePayload;
-        await supabaseAnon.from('produtos').update(payloadSemFk).eq('id', produtoId);
-      }
+    if (res.ok) {
+      return { sucesso: true };
     }
-    return true;
+
+    const erroBody = await res.json().catch(() => null);
+    return {
+      sucesso: false,
+      erro: erroBody?.erro || 'Não foi possível salvar as alterações do produto.',
+    };
   } catch (err) {
-    console.error('Erro ao atualizar produto no Supabase:', err);
-    return false;
+    console.error('Erro ao atualizar produto:', err);
+    return {
+      sucesso: false,
+      erro: 'Erro de comunicação ao salvar alterações do produto.',
+    };
   }
 }
 
@@ -2106,7 +2107,7 @@ export async function excluirProdutoNoBanco(produtoId: string): Promise<boolean>
 // 7. MEMBROS DA EQUIPE E NÍVEIS DE PERMISSÃO
 // ==============================================================================
 
-let memoriaMembros: Membro[] = [...DADOS_MEMBROS];
+let memoriaMembros: Membro[] = [];
 
 export async function buscarMembrosDoBanco(): Promise<Membro[]> {
   try {
@@ -2121,14 +2122,15 @@ export async function buscarMembrosDoBanco(): Promise<Membro[]> {
     // 2. Busca os cargos vinculados na organização
     const { data: membrosOrg } = await supabase
       .from('membros_organizacao')
-      .select('perfil_id, cargo, ativo')
+      .select('organizacao_id, perfil_id, cargo, ativo')
       .eq('ativo', true);
 
-    if (perfis && perfis.length > 0) {
+    if (!errPerfis && perfis) {
       const mapaCargos = new Map<string, 'admin' | 'gestor' | 'vendedor'>();
       if (membrosOrg && membrosOrg.length > 0) {
         membrosOrg.forEach((m: any) => {
-          if (m.perfil_id && m.cargo) {
+          if (!m.perfil_id || !m.cargo) return;
+          if (m.organizacao_id === ORG_PADRAO_ID || !mapaCargos.has(m.perfil_id)) {
             mapaCargos.set(m.perfil_id, m.cargo);
           }
         });
@@ -2264,30 +2266,43 @@ export async function dispararConviteEmail(dados: {
     emailEnviado: false,
     linkAtivacao: `${appUrl}/login?convite=ativo&email=${encodeURIComponent(dados.email)}`,
     avisoSmtp:
-      'O servidor SMTP do banco de dados precisa ser configurado para disparos externos. Você pode copiar o link direto de ativação.',
+      'O servidor SMTP precisa ser configurado para disparos externos. Você pode copiar o link direto de ativação.',
   };
 }
 
 export async function atualizarCargoMembroNoBanco(
   membroId: string,
-  novoCargo: 'admin' | 'gestor' | 'vendedor'
-): Promise<boolean> {
-  memoriaMembros = memoriaMembros.map((m) =>
-    m.id === membroId ? { ...m, cargo: novoCargo } : m
-  );
-
+  novoCargo: 'admin' | 'gestor' | 'vendedor',
+  membroInfo?: { email?: string; nome_completo?: string }
+): Promise<{ sucesso: boolean; erro?: string }> {
   try {
-    const supabase = createClient() as any;
-    await supabase
-      .from('membros_organizacao')
-      .update({ cargo: novoCargo })
-      .eq('organizacao_id', ORG_PADRAO_ID)
-      .eq('perfil_id', membroId);
+    const res = await fetch('/api/membros/cargo', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        membroId,
+        novoCargo,
+        email: membroInfo?.email,
+        nome_completo: membroInfo?.nome_completo,
+      }),
+    });
 
-    return true;
+    if (res.ok) {
+      const json = await res.json().catch(() => null);
+      const idFinal = json?.membroId || membroId;
+      memoriaMembros = memoriaMembros.map((m) =>
+        m.id === membroId ? { ...m, id: idFinal, cargo: novoCargo } : m
+      );
+      return { sucesso: true };
+    }
+
+    const erroBody = await res.json().catch(() => null);
+    const mensagemErro = erroBody?.erro || 'Não foi possível alterar a permissão.';
+    console.error('Erro ao atualizar permissão:', mensagemErro);
+    return { sucesso: false, erro: mensagemErro };
   } catch (err) {
-    console.warn('Erro ao atualizar cargo no banco, salvo localmente:', err);
-    return true;
+    console.error('Erro ao atualizar permissão:', err);
+    return { sucesso: false, erro: 'Erro de comunicação ao atualizar permissão.' };
   }
 }
 

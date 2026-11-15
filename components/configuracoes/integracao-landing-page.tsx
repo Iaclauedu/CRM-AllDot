@@ -199,7 +199,7 @@ export function IntegracaoLandingPage() {
         ativo: true,
       });
       setFeedbackConfig(
-        'Configurações de Funil, Etapa Inicial e Regra de Negociação salvas no Supabase!'
+        'Configurações de Funil, Etapa Inicial e Regra de Negociação salvas com sucesso!'
       );
       setTimeout(() => setFeedbackConfig(null), 4000);
     } finally {
@@ -493,7 +493,7 @@ export function IntegracaoLandingPage() {
             {salvandoConfig ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                <span>Salvando no Banco...</span>
+                <span>Salvando alterações...</span>
               </>
             ) : (
               <>

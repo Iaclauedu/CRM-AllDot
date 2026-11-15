@@ -52,7 +52,7 @@ import {
 import { formatarMoeda } from '@/lib/utils';
 
 export default function PaginaProdutos() {
-  const [produtos, setProdutos] = React.useState<Produto[]>(DADOS_PRODUTOS);
+  const [produtos, setProdutos] = React.useState<Produto[]>([]);
   const [unidadesMedidas, setUnidadesMedidas] =
     React.useState<UnidadeMedidaItem[]>(DADOS_UNIDADES_MEDIDAS);
   const [categoriasProduto, setCategoriasProduto] =
@@ -64,7 +64,11 @@ export default function PaginaProdutos() {
   const [produtoEditando, setProdutoEditando] = React.useState<Produto | null>(null);
   const [salvando, setSalvando] = React.useState(false);
   const [processandoImagem, setProcessandoImagem] = React.useState(false);
-  const [feedback, setFeedback] = React.useState<string | null>(null);
+  const [feedback, setFeedback] = React.useState<{
+    tipo: 'sucesso' | 'erro';
+    texto: string;
+  } | null>(null);
+  const [erroModal, setErroModal] = React.useState<string | null>(null);
 
   // Estados do formulário de produto
   const [nome, setNome] = React.useState('');
@@ -112,12 +116,13 @@ export default function PaginaProdutos() {
     };
   }, []);
 
-  const exibirFeedback = (msg: string) => {
-    setFeedback(msg);
-    setTimeout(() => setFeedback(null), 4000);
+  const exibirFeedback = (texto: string, tipo: 'sucesso' | 'erro' = 'sucesso') => {
+    setFeedback({ tipo, texto });
+    setTimeout(() => setFeedback(null), 5000);
   };
 
   const abrirModalNovoProduto = () => {
+    setErroModal(null);
     setProdutoEditando(null);
     setNome('');
     setDescricao('');
@@ -133,6 +138,7 @@ export default function PaginaProdutos() {
   };
 
   const abrirModalEditarProduto = (prod: Produto) => {
+    setErroModal(null);
     const unidadeEncontrada = unidadesMedidas.find(
       (u) => u.id === prod.unidades_medidas || u.nome === prod.unidade_medida
     );
@@ -207,7 +213,7 @@ export default function PaginaProdutos() {
       setNovoCampoOpcoes('');
       setNovoCampoObrigatorio(false);
       setCriandoCampoInline(false);
-      exibirFeedback(`Campo personalizado "${criado.label}" salvo no Supabase!`);
+      exibirFeedback(`Campo personalizado "${criado.label}" salvo com sucesso!`);
     } catch (err) {
       console.error('Erro ao criar campo personalizado:', err);
     } finally {
@@ -234,6 +240,7 @@ export default function PaginaProdutos() {
     e.preventDefault();
     if (!nome.trim() || !valor) return;
 
+    setErroModal(null);
     setSalvando(true);
     try {
       const valorNumerico = parseFloat(valor.replace(',', '.'));
@@ -244,7 +251,7 @@ export default function PaginaProdutos() {
       const nomeCategoria = categoriaItem?.nome || 'Crachás';
 
       if (produtoEditando) {
-        await atualizarProdutoNoBanco(produtoEditando.id, {
+        const resultado = await atualizarProdutoNoBanco(produtoEditando.id, {
           nome: nome.trim(),
           descricao: descricao.trim(),
           codigo_sku: sku.trim() || produtoEditando.codigo_sku,
@@ -257,6 +264,13 @@ export default function PaginaProdutos() {
           imagem_url: imagemUrl || undefined,
           campos_personalizados: valoresPersonalizados,
         });
+
+        if (!resultado.sucesso) {
+          setErroModal(
+            resultado.erro || `Não foi possível atualizar o produto "${nome.trim()}".`
+          );
+          return;
+        }
 
         const atualizado: Produto = {
           ...produtoEditando,
@@ -274,7 +288,7 @@ export default function PaginaProdutos() {
         };
 
         setProdutos((prev) => prev.map((p) => (p.id === atualizado.id ? atualizado : p)));
-        exibirFeedback(`Produto "${atualizado.nome}" atualizado no Supabase!`);
+        exibirFeedback(`Produto "${atualizado.nome}" atualizado com sucesso!`);
       } else {
         const novoProduto = await criarProdutoNoBanco({
           nome: nome.trim(),
@@ -291,12 +305,13 @@ export default function PaginaProdutos() {
         });
 
         setProdutos((prev) => [novoProduto, ...prev]);
-        exibirFeedback(`Produto "${novoProduto.nome}" cadastrado com sucesso no Supabase!`);
+        exibirFeedback(`Produto "${novoProduto.nome}" cadastrado com sucesso!`);
       }
 
       setModalAberta(false);
     } catch (err) {
       console.error('Erro ao salvar produto:', err);
+      setErroModal('Erro inesperado ao salvar o produto.');
     } finally {
       setSalvando(false);
     }
@@ -307,14 +322,24 @@ export default function PaginaProdutos() {
     setProdutos((prev) =>
       prev.map((p) => (p.id === prod.id ? { ...p, ativo: novoStatus } : p))
     );
-    await atualizarProdutoNoBanco(prod.id, {
+    const resultado = await atualizarProdutoNoBanco(prod.id, {
       ativo: novoStatus,
       unidade_medida: prod.unidade_medida,
       imagem_url: prod.imagem_url,
       campos_personalizados: prod.campos_personalizados,
     });
+    if (!resultado.sucesso) {
+      setProdutos((prev) =>
+        prev.map((p) => (p.id === prod.id ? { ...p, ativo: prod.ativo } : p))
+      );
+      exibirFeedback(
+        resultado.erro || `Não foi possível alterar o status de "${prod.nome}".`,
+        'erro'
+      );
+      return;
+    }
     exibirFeedback(
-      `Produto "${prod.nome}" marcado como ${novoStatus ? 'Ativo' : 'Inativo'} no Supabase!`
+      `Produto "${prod.nome}" marcado como ${novoStatus ? 'Ativo' : 'Inativo'} com sucesso!`
     );
   };
 
@@ -352,7 +377,7 @@ export default function PaginaProdutos() {
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Itens, planos, imagens e campos personalizados sincronizados com o Supabase.
+              Itens, planos, imagens e campos personalizados do catálogo.
             </p>
           </div>
 
@@ -392,9 +417,15 @@ export default function PaginaProdutos() {
         </div>
 
         {feedback && (
-          <div className="mx-6 mt-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 text-xs text-emerald-400 shadow-sm">
+          <div
+            className={`mx-6 mt-4 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs shadow-sm ${
+              feedback.tipo === 'erro'
+                ? 'border-rose-500/30 bg-rose-500/10 text-rose-400'
+                : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+            }`}
+          >
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span className="font-medium">{feedback}</span>
+            <span className="font-medium">{feedback.texto}</span>
           </div>
         )}
 
@@ -513,8 +544,8 @@ export default function PaginaProdutos() {
                             onClick={() => handleAlternarStatusProduto(prod)}
                             title="Clique para alternar entre Ativo e Inativo"
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border transition-colors ${prod.ativo !== false
-                                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                                : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted'
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                              : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted'
                               }`}
                           >
                             {prod.ativo !== false ? (
@@ -577,7 +608,7 @@ export default function PaginaProdutos() {
                 {produtoEditando ? 'Editar Produto ou Serviço' : 'Novo Produto ou Serviço'}
               </DialogTitle>
               <DialogDescription>
-                Cadastre as informações, imagem do produto e preencha ou crie novos campos personalizados salvos no Supabase.
+                Cadastre as informações, imagem do produto e preencha ou crie novos campos personalizados.
               </DialogDescription>
             </DialogHeader>
 
@@ -765,8 +796,8 @@ export default function PaginaProdutos() {
                     type="button"
                     onClick={() => setAtivo(true)}
                     className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${ativo
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-card text-muted-foreground border border-border hover:text-foreground'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-card text-muted-foreground border border-border hover:text-foreground'
                       }`}
                   >
                     Ativo
@@ -775,8 +806,8 @@ export default function PaginaProdutos() {
                     type="button"
                     onClick={() => setAtivo(false)}
                     className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all ${!ativo
-                        ? 'bg-rose-600 text-white shadow-xs'
-                        : 'bg-card text-muted-foreground border border-border hover:text-foreground'
+                      ? 'bg-rose-600 text-white shadow-xs'
+                      : 'bg-card text-muted-foreground border border-border hover:text-foreground'
                       }`}
                   >
                     Inativo
@@ -809,7 +840,7 @@ export default function PaginaProdutos() {
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
                         <Sparkles className="h-3 w-3" />
-                        Novo Campo Personalizado (Salvo no Supabase)
+                        Novo Campo Personalizado
                       </span>
                       <button
                         type="button"
@@ -977,6 +1008,12 @@ export default function PaginaProdutos() {
               </div>
             </div>
 
+            {erroModal && (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-400">
+                {erroModal}
+              </div>
+            )}
+
             <DialogFooter>
               <Button
                 type="button"
@@ -1000,7 +1037,7 @@ export default function PaginaProdutos() {
             <DialogHeader>
               <DialogTitle>Campos Personalizados de Produtos</DialogTitle>
               <DialogDescription>
-                Crie os campos específicos que sua operação precisa para os produtos. Todos os campos e valores são salvos no Supabase.
+                Crie os campos específicos que sua operação precisa para os produtos.
               </DialogDescription>
             </DialogHeader>
 
@@ -1065,7 +1102,7 @@ export default function PaginaProdutos() {
 
                 <Button type="submit" size="sm" disabled={salvandoCampo || !novoCampoLabel.trim()} className="gap-1.5">
                   {salvandoCampo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                  <span>Criar Campo no Supabase</span>
+                  <span>Criar Campo</span>
                 </Button>
               </div>
             </form>
@@ -1100,6 +1137,12 @@ export default function PaginaProdutos() {
                 </p>
               )}
             </div>
+
+            {erroModal && (
+              <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-400">
+                {erroModal}
+              </div>
+            )}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setModalCamposAberta(false)}>

@@ -56,6 +56,7 @@ import {
 } from '@/lib/supabase/service';
 import { ModalConvidarMembro } from '@/components/configuracoes/modal-convidar-membro';
 import { UserPlus } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 export default function PaginaConfiguracoes() {
   const [abaAtiva, setAbaAtiva] = React.useState<'branding' | 'funil' | 'workspace' | 'landing_page' | 'automacoes_email'>('branding');
@@ -75,9 +76,13 @@ export default function PaginaConfiguracoes() {
   const [mensagemSucesso, setMensagemSucesso] = React.useState<string | null>(null);
 
   // Estados para Gestão de Membros e Permissões
-  const [membros, setMembros] = React.useState<Membro[]>(DADOS_MEMBROS);
+  const [membros, setMembros] = React.useState<Membro[]>([]);
+  const [usuarioAtualId, setUsuarioAtualId] = React.useState<string | null>(null);
+  const [usuarioAtualEmail, setUsuarioAtualEmail] = React.useState<string | null>(null);
+  const [cargoUsuarioDireto, setCargoUsuarioDireto] = React.useState<string | null>(null);
+  const [carregandoSessaoUsuario, setCarregandoSessaoUsuario] = React.useState(true);
   const [modalConvidarAberto, setModalConvidarAberto] = React.useState(false);
-  const [feedbackMembro, setFeedbackMembro] = React.useState<{ tipo: 'sucesso' | 'info'; texto: string } | null>(null);
+  const [feedbackMembro, setFeedbackMembro] = React.useState<{ tipo: 'sucesso' | 'info' | 'erro'; texto: string } | null>(null);
   const [recarregandoMembros, setRecarregandoMembros] = React.useState(false);
 
   // Nova etapa
@@ -129,6 +134,28 @@ export default function PaginaConfiguracoes() {
     buscarMembrosDoBanco().then((m) => {
       if (m && m.length > 0) setMembros(m);
     });
+
+    const supabaseClient = createClient();
+    supabaseClient.auth
+      .getUser()
+      .then(async ({ data }) => {
+        if (data?.user) {
+          setUsuarioAtualId(data.user.id);
+          setUsuarioAtualEmail(data.user.email || null);
+          const { data: vinculo } = await (supabaseClient as any)
+            .from('membros_organizacao')
+            .select('cargo')
+            .eq('perfil_id', data.user.id)
+            .eq('ativo', true)
+            .maybeSingle();
+          if (vinculo?.cargo) {
+            setCargoUsuarioDireto(vinculo.cargo);
+          }
+        }
+      })
+      .finally(() => {
+        setCarregandoSessaoUsuario(false);
+      });
 
     // Detecta aba inicial via query string ou hash
     if (typeof window !== 'undefined') {
@@ -201,8 +228,8 @@ export default function PaginaConfiguracoes() {
       novoMembro.cargo === 'admin'
         ? 'Administrador'
         : novoMembro.cargo === 'gestor'
-        ? 'Gestor'
-        : 'Vendedor';
+          ? 'Gestor'
+          : 'Vendedor';
     setFeedbackMembro({
       tipo: 'sucesso',
       texto: `Novo membro ${novoMembro.nome_completo} adicionado com sucesso como "${cargoFormatado}"!`,
@@ -210,30 +237,75 @@ export default function PaginaConfiguracoes() {
     setTimeout(() => setFeedbackMembro(null), 5000);
   };
 
+  const membroAtual = React.useMemo(() => {
+    if (!usuarioAtualId && !usuarioAtualEmail) return null;
+    return (
+      membros.find(
+        (m) =>
+          (usuarioAtualId && m.id === usuarioAtualId) ||
+          (usuarioAtualEmail && m.email.toLowerCase() === usuarioAtualEmail.toLowerCase())
+      ) || null
+    );
+  }, [membros, usuarioAtualId, usuarioAtualEmail]);
+
+  const usuarioAtualEhAdmin = React.useMemo(() => {
+    if (cargoUsuarioDireto === 'admin') return true;
+    return membroAtual?.cargo === 'admin';
+  }, [cargoUsuarioDireto, membroAtual]);
+
   const handleAlterarCargo = async (
     membroId: string,
     novoCargo: 'admin' | 'gestor' | 'vendedor'
   ) => {
+    if (!usuarioAtualEhAdmin) {
+      setFeedbackMembro({
+        tipo: 'erro',
+        texto: 'Acesso negado: apenas usuários Admin podem alterar permissões.',
+      });
+      setTimeout(() => setFeedbackMembro(null), 5000);
+      return;
+    }
+
     const membroAlvo = membros.find((m) => m.id === membroId);
     const nomeMembro = membroAlvo?.nome_completo || 'Membro';
+    const cargoAnterior = membroAlvo?.cargo;
 
     // Atualização otimista
     setMembros((prev) =>
       prev.map((m) => (m.id === membroId ? { ...m, cargo: novoCargo } : m))
     );
 
-    await atualizarCargoMembroNoBanco(membroId, novoCargo);
+    const resultado = await atualizarCargoMembroNoBanco(membroId, novoCargo, {
+      email: membroAlvo?.email,
+      nome_completo: membroAlvo?.nome_completo,
+    });
+
+    if (!resultado.sucesso) {
+      if (cargoAnterior) {
+        setMembros((prev) =>
+          prev.map((m) => (m.id === membroId ? { ...m, cargo: cargoAnterior } : m))
+        );
+      }
+      setFeedbackMembro({
+        tipo: 'erro',
+        texto:
+          resultado.erro ||
+          `Não foi possível salvar a alteração de permissão de ${nomeMembro}.`,
+      });
+      setTimeout(() => setFeedbackMembro(null), 5000);
+      return;
+    }
 
     const cargoLabel =
       novoCargo === 'admin'
         ? 'Administrador'
         : novoCargo === 'gestor'
-        ? 'Gestor'
-        : 'Vendedor';
+          ? 'Gestor'
+          : 'Vendedor';
 
     setFeedbackMembro({
       tipo: 'sucesso',
-      texto: `Nível de permissão de ${nomeMembro} alterado para "${cargoLabel}".`,
+      texto: `Permissão de ${nomeMembro} alterada para "${cargoLabel}" com sucesso.`,
     });
     setTimeout(() => setFeedbackMembro(null), 4000);
   };
@@ -270,7 +342,7 @@ export default function PaginaConfiguracoes() {
       }
       setFeedbackMembro({
         tipo: 'sucesso',
-        texto: 'Lista de membros sincronizada com o banco de dados Supabase!',
+        texto: 'Lista de membros atualizada com sucesso!',
       });
       setTimeout(() => setFeedbackMembro(null), 4000);
     } catch (err) {
@@ -347,7 +419,7 @@ export default function PaginaConfiguracoes() {
           dias_estagnacao: e.dias_estagnacao,
         });
       }
-      setMensagemSucesso('Configurações de Etapas e Rotting salvas com sucesso no Supabase!');
+      setMensagemSucesso('Configurações de Etapas e Rotting salvas com sucesso!');
       setTimeout(() => setMensagemSucesso(null), 3500);
     } catch (err) {
       console.error('Erro ao salvar etapas:', err);
@@ -369,7 +441,7 @@ export default function PaginaConfiguracoes() {
       }
       setSalvo(true);
       setMensagemSucesso(
-        'Informações do Workspace (Nome da Organização e CNPJ) salvas com sucesso no Supabase!'
+        'Dados do Workspace (Nome da Organização e CNPJ) salvos com sucesso!'
       );
       setTimeout(() => setSalvo(false), 2500);
       setTimeout(() => setMensagemSucesso(null), 4000);
@@ -413,11 +485,10 @@ export default function PaginaConfiguracoes() {
               id="tab-branding"
               type="button"
               onClick={() => setAbaAtiva('branding')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
-                abaAtiva === 'branding'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${abaAtiva === 'branding'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
-              }`}
+                }`}
             >
               <Palette className="h-4 w-4" />
               <span>Identidade Visual & Cores</span>
@@ -430,11 +501,10 @@ export default function PaginaConfiguracoes() {
               id="tab-funil"
               type="button"
               onClick={() => setAbaAtiva('funil')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
-                abaAtiva === 'funil'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${abaAtiva === 'funil'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
-              }`}
+                }`}
             >
               <Layers className="h-4 w-4" />
               <span>Etapas do Pipeline & Rotting</span>
@@ -444,11 +514,10 @@ export default function PaginaConfiguracoes() {
               id="tab-workspace"
               type="button"
               onClick={() => setAbaAtiva('workspace')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
-                abaAtiva === 'workspace'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${abaAtiva === 'workspace'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
-              }`}
+                }`}
             >
               <Building2 className="h-4 w-4" />
               <span>Workspace & Equipe</span>
@@ -458,11 +527,10 @@ export default function PaginaConfiguracoes() {
               id="tab-landing-page"
               type="button"
               onClick={() => setAbaAtiva('landing_page')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
-                abaAtiva === 'landing_page'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${abaAtiva === 'landing_page'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
-              }`}
+                }`}
             >
               <Globe className="h-4 w-4" />
               <span>Landing Page & Webhook</span>
@@ -472,11 +540,10 @@ export default function PaginaConfiguracoes() {
               id="tab-automacoes-email"
               type="button"
               onClick={() => setAbaAtiva('automacoes_email')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${
-                abaAtiva === 'automacoes_email'
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all select-none ${abaAtiva === 'automacoes_email'
                   ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
-              }`}
+                }`}
             >
               <Mail className="h-4 w-4" />
               <span>Automações de E-mail & SMTP</span>
@@ -505,7 +572,7 @@ export default function PaginaConfiguracoes() {
                   {carregandoWorkspace && (
                     <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <Loader2 className="h-3 w-3 animate-spin text-emerald-400" />
-                      Carregando do Supabase...
+                      Carregando dados...
                     </span>
                   )}
                 </div>
@@ -556,7 +623,7 @@ export default function PaginaConfiguracoes() {
                     {salvandoWorkspace ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span>Salvando no Supabase...</span>
+                        <span>Salvando alterações...</span>
                       </>
                     ) : salvo ? (
                       <>
@@ -570,419 +637,446 @@ export default function PaginaConfiguracoes() {
                 </div>
               </form>
 
-          {/* Membros e Permissões */}
-          <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Users className="h-4 w-4 text-sky-400" />
-                  Membros da Equipe ({membros.length})
-                </h2>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Gerencie os usuários do workspace e altere o nível de permissão (Admin, Gestor ou Vendedor).
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  id="btn-sincronizar-membros"
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSincronizarMembros}
-                  disabled={recarregandoMembros}
-                  className="text-xs gap-1.5 border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                  title="Atualizar lista com dados do Supabase"
-                >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 ${
-                      recarregandoMembros ? 'animate-spin text-emerald-400' : ''
-                    }`}
-                  />
-                  <span>{recarregandoMembros ? 'Sincronizando...' : 'Sincronizar Banco'}</span>
-                </Button>
-                <Button
-                  id="btn-convidar-membro"
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors"
-                  onClick={() => setModalConvidarAberto(true)}
-                >
-                  <UserPlus className="h-3.5 w-3.5" />
-                  <span>Convidar Membro</span>
-                </Button>
-              </div>
-            </div>
-
-            {feedbackMembro && (
-              <div
-                className={`flex items-center gap-2 rounded-lg p-2.5 text-xs transition-all ${
-                  feedbackMembro.tipo === 'sucesso'
-                    ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                    : 'border border-sky-500/20 bg-sky-500/10 text-sky-400'
-                }`}
-              >
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>{feedbackMembro.texto}</span>
-              </div>
-            )}
-
-            <div className="divide-y divide-border/60">
-              {membros.map((membro) => (
-                <div key={membro.id} className="flex items-center justify-between py-2.5 gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={membro.avatar_url}
-                      alt={membro.nome_completo}
-                      className="h-8 w-8 rounded-full object-cover border border-border shrink-0 bg-muted"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-                          membro.nome_completo
-                        )}`;
-                      }}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate">
-                        {membro.nome_completo}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground truncate">{membro.email}</p>
-                    </div>
+              {/* Membros e Permissões */}
+              <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="h-4 w-4 text-sky-400" />
+                      Membros da Equipe ({membros.length})
+                    </h2>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Gerencie os usuários do workspace e altere o nível de permissão (Admin, Gestor ou Vendedor).
+                    </p>
                   </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    {/* Botão Copiar Link Direto de Acesso */}
+                  <div className="flex items-center gap-2">
                     <Button
+                      id="btn-sincronizar-membros"
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => handleCopiarLinkMembro(membro)}
-                      className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-emerald-400 hover:border-emerald-500/30 transition-colors"
-                      title={`Copiar link de primeiro acesso para ${membro.nome_completo}`}
+                      onClick={handleSincronizarMembros}
+                      disabled={recarregandoMembros}
+                      className="text-xs gap-1.5 border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      title="Atualizar lista de membros"
                     >
-                      <Copy className="h-3 w-3" />
-                      <span className="hidden sm:inline">Copiar Link</span>
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${recarregandoMembros ? 'animate-spin text-emerald-400' : ''
+                          }`}
+                      />
+                      <span>{recarregandoMembros ? 'Sincronizando...' : 'Sincronizar Banco'}</span>
                     </Button>
-
-                    {/* Seletor de Nível de Permissão Interativo */}
-                    <div className="relative">
-                      <select
-                        value={membro.cargo}
-                        onChange={(e) =>
-                          handleAlterarCargo(
-                            membro.id,
-                            e.target.value as 'admin' | 'gestor' | 'vendedor'
-                          )
-                        }
-                        className={`h-7 px-2.5 pr-6 rounded-md text-[11px] font-semibold appearance-none cursor-pointer border transition-colors outline-none focus:ring-1 focus:ring-emerald-500 ${
-                          membro.cargo === 'admin'
-                            ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
-                            : membro.cargo === 'gestor'
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-                            : 'bg-zinc-800/80 border-border text-zinc-300 hover:bg-zinc-800'
-                        }`}
-                        title="Alterar nível de permissão deste usuário"
-                      >
-                        <option value="admin" className="bg-[#0B132B] text-sky-400">
-                          Admin (Acesso Total)
-                        </option>
-                        <option value="gestor" className="bg-[#0B132B] text-emerald-400">
-                          Gestor (Supervisão)
-                        </option>
-                        <option value="vendedor" className="bg-[#0B132B] text-zinc-300">
-                          Vendedor (Execução)
-                        </option>
-                      </select>
-                      <ChevronDown className="h-3 w-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-                    </div>
-
-                    {/* Excluir membro (apenas se houver mais de 1) */}
-                    {membros.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoverMembro(membro.id, membro.nome_completo)}
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                        title={`Remover ${membro.nome_completo} da equipe`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                    <Button
+                      id="btn-convidar-membro"
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs gap-1.5 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300 transition-colors"
+                      onClick={() => setModalConvidarAberto(true)}
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                      <span>Convidar Membro</span>
+                    </Button>
                   </div>
                 </div>
-              ))}
+
+                {!carregandoSessaoUsuario && !usuarioAtualEhAdmin && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5 text-xs text-amber-300">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 shrink-0" />
+                  <span>
+                    {!usuarioAtualId
+                      ? 'Nenhuma sessão autenticada ativa. Entre com uma conta Admin para alterar permissões.'
+                      : `Seu usuário (${membroAtual?.nome_completo || usuarioAtualEmail}) possui perfil "${cargoUsuarioDireto || membroAtual?.cargo || 'vendedor'}". Apenas usuários Admin podem alterar permissões.`}
+                  </span>
+                </div>
+                {!usuarioAtualId && (
+                  <a
+                    href="/login"
+                    className="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/20 px-2.5 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-500/30"
+                  >
+                    Ir para Login
+                  </a>
+                )}
+              </div>
+            )}
+
+            {feedbackMembro && (
+                  <div
+                    className={`flex items-center gap-2 rounded-lg p-2.5 text-xs transition-all ${feedbackMembro.tipo === 'sucesso'
+                        ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                        : feedbackMembro.tipo === 'erro'
+                          ? 'border border-rose-500/20 bg-rose-500/10 text-rose-400'
+                          : 'border border-sky-500/20 bg-sky-500/10 text-sky-400'
+                      }`}
+                  >
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <span>{feedbackMembro.texto}</span>
+                  </div>
+                )}
+
+                <div className="divide-y divide-border/60">
+                  {membros.map((membro) => (
+                    <div key={membro.id} className="flex items-center justify-between py-2.5 gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={membro.avatar_url}
+                          alt={membro.nome_completo}
+                          className="h-8 w-8 rounded-full object-cover border border-border shrink-0 bg-muted"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                              membro.nome_completo
+                            )}`;
+                          }}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-foreground truncate">
+                            {membro.nome_completo}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground truncate">{membro.email}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Botão Copiar Link Direto de Acesso */}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCopiarLinkMembro(membro)}
+                          className="h-7 px-2 text-[11px] gap-1 text-muted-foreground hover:text-emerald-400 hover:border-emerald-500/30 transition-colors"
+                          title={`Copiar link de primeiro acesso para ${membro.nome_completo}`}
+                        >
+                          <Copy className="h-3 w-3" />
+                          <span className="hidden sm:inline">Copiar Link</span>
+                        </Button>
+
+                        {/* Seletor de Nível de Permissão Interativo */}
+                        <div className="relative">
+                          <select
+                            value={membro.cargo}
+                            disabled={!usuarioAtualEhAdmin}
+                            onChange={(e) =>
+                              handleAlterarCargo(
+                                membro.id,
+                                e.target.value as 'admin' | 'gestor' | 'vendedor'
+                              )
+                            }
+                            className={`h-7 px-2.5 pr-6 rounded-md text-[11px] font-semibold appearance-none border transition-colors outline-none focus:ring-1 focus:ring-emerald-500 ${
+                              usuarioAtualEhAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                            } ${membro.cargo === 'admin'
+                                ? 'bg-sky-500/10 border-sky-500/30 text-sky-400 hover:bg-sky-500/20'
+                                : membro.cargo === 'gestor'
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                                  : 'bg-zinc-800/80 border-border text-zinc-300 hover:bg-zinc-800'
+                              }`}
+                            title={
+                              usuarioAtualEhAdmin
+                                ? 'Alterar nível de permissão deste usuário'
+                                : 'Apenas usuários Admin podem alterar permissões'
+                            }
+                          >
+                            <option value="admin" className="bg-[#0B132B] text-sky-400">
+                              Admin (Acesso Total)
+                            </option>
+                            <option value="gestor" className="bg-[#0B132B] text-emerald-400">
+                              Gestor (Supervisão)
+                            </option>
+                            <option value="vendedor" className="bg-[#0B132B] text-zinc-300">
+                              Vendedor (Execução)
+                            </option>
+                          </select>
+                          <ChevronDown className="h-3 w-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+                        </div>
+
+                        {/* Excluir membro (apenas se houver mais de 1) */}
+                        {membros.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoverMembro(membro.id, membro.nome_completo)}
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title={`Remover ${membro.nome_completo} da equipe`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
 
           {/* Conteúdo Aba: Etapas do Funil & Rotting */}
           {abaAtiva === 'funil' && (
             <div className="space-y-6">
               {/* Etapas do Funil & Dias de Estagnação (Rotting) - Totalmente Editáveis */}
               <div className="rounded-xl border border-border bg-card p-6 shadow-sm space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers className="h-4 w-4 text-amber-500" />
-                  Etapas do Funil & Alertas de Estagnação (Rotting)
-                </h2>
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  Edite os nomes das fases, probabilidades e a quantidade de dias sem atividade para acionar o alerta visual de estagnação.
-                </p>
-              </div>
-
-              {/* Seletor do Funil para Configuração */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground font-medium">Funil:</span>
-                <select
-                  value={funilSelecionadoId}
-                  onChange={(e) => handleTrocarFunil(e.target.value)}
-                  className="h-8 rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                >
-                  {funis.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.nome} {f.padrao ? '(Padrão)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Cabeçalho da Tabela de Fases */}
-            <div className="grid grid-cols-12 gap-2 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-mono">
-              <div className="col-span-1 text-center">Ordem</div>
-              <div className="col-span-4">Nome da Fase</div>
-              <div className="col-span-3">Probabilidade (%)</div>
-              <div className="col-span-3 flex items-center gap-1">
-                <Flame className="h-3 w-3 text-rose-500" />
-                <span>Estagnação (Rotting)</span>
-              </div>
-              <div className="col-span-1 text-center">Ações</div>
-            </div>
-
-            {/* Lista Editável de Etapas */}
-            <div className="space-y-2.5">
-              {etapas.map((etapa, idx) => (
-                <div
-                  key={etapa.id}
-                  className="grid grid-cols-12 gap-2 items-center p-2.5 rounded-xl border border-border/80 bg-muted/20 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
-                >
-                  {/* Ordem & Controles */}
-                  <div className="col-span-1 flex items-center justify-center gap-0.5">
-                    <span className="font-mono text-xs font-bold text-muted-foreground w-4 text-center">
-                      {idx + 1}
-                    </span>
-                    <div className="flex flex-col">
-                      <button
-                        type="button"
-                        disabled={idx === 0}
-                        onClick={() => handleMoverOrdem(idx, 'cima')}
-                        className="text-muted-foreground hover:text-foreground disabled:opacity-20 p-0.5"
-                        title="Subir etapa"
-                      >
-                        <ChevronUp className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={idx === etapas.length - 1}
-                        onClick={() => handleMoverOrdem(idx, 'baixo')}
-                        className="text-muted-foreground hover:text-foreground disabled:opacity-20 p-0.5"
-                        title="Descer etapa"
-                      >
-                        <ChevronDown className="h-3 w-3" />
-                      </button>
-                    </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xs font-semibold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-amber-500" />
+                      Etapas do Funil & Alertas de Estagnação (Rotting)
+                    </h2>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Edite os nomes das fases, probabilidades e a quantidade de dias sem atividade para acionar o alerta visual de estagnação.
+                    </p>
                   </div>
 
-                  {/* Nome da Fase */}
-                  <div className="col-span-4">
-                    <Input
-                      value={etapa.nome}
-                      onChange={(e) => handleMudarCampoEtapa(etapa.id, 'nome', e.target.value)}
-                      className="h-8 text-xs font-semibold"
-                      placeholder="Nome da etapa..."
-                    />
-                  </div>
-
-                  {/* Probabilidade % */}
-                  <div className="col-span-3 flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={etapa.probabilidade_fechamento}
-                      onChange={(e) =>
-                        handleMudarCampoEtapa(
-                          etapa.id,
-                          'probabilidade_fechamento',
-                          Math.max(0, Math.min(100, parseInt(e.target.value) || 0))
-                        )
-                      }
-                      className="h-8 text-xs font-mono"
-                    />
-                    <span className="text-xs font-mono text-muted-foreground">%</span>
-                  </div>
-
-                  {/* Dias de Estagnação / Rotting */}
-                  <div className="col-span-3 flex items-center gap-1.5">
-                    <Input
-                      type="number"
-                      min="1"
-                      max="365"
-                      value={etapa.dias_estagnacao}
-                      onChange={(e) =>
-                        handleMudarCampoEtapa(
-                          etapa.id,
-                          'dias_estagnacao',
-                          Math.max(1, parseInt(e.target.value) || 1)
-                        )
-                      }
-                      className="h-8 text-xs font-mono"
-                    />
-                    <span className="text-[11px] text-muted-foreground font-mono whitespace-nowrap">
-                      dias
-                    </span>
-                  </div>
-
-                  {/* Botão Excluir */}
-                  <div className="col-span-1 flex items-center justify-center">
-                    <button
-                      type="button"
-                      disabled={etapas.length <= 1}
-                      onClick={() => handleRemoverEtapa(etapa.id)}
-                      className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 transition-colors disabled:opacity-20"
-                      title="Excluir etapa"
+                  {/* Seletor do Funil para Configuração */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground font-medium">Funil:</span>
+                    <select
+                      value={funilSelecionadoId}
+                      onChange={(e) => handleTrocarFunil(e.target.value)}
+                      className="h-8 rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-bold text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                      {funis.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.nome} {f.padrao ? '(Padrão)' : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Adicionar Nova Etapa */}
-            {!adicionando ? (
-              <button
-                type="button"
-                onClick={() => setAdicionando(true)}
-                className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#E42358]/40 bg-[#E42358]/5 py-2.5 text-xs font-bold text-[#E42358] hover:bg-[#E42358]/10 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Adicionar Nova Etapa a este Funil
-              </button>
-            ) : (
-              <div className="rounded-xl border border-[#E42358]/30 bg-[#E42358]/5 p-4 space-y-3 animate-in fade-in-0">
-                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                  <Plus className="h-3.5 w-3.5 text-[#E42358]" />
-                  Nova Etapa do Funil
-                </span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                  <div className="sm:col-span-6">
-                    <label className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">
-                      Nome da Etapa
-                    </label>
-                    <Input
-                      autoFocus
-                      placeholder="Ex: Auditoria Técnica, Contrato Assinado..."
-                      value={novoNome}
-                      onChange={(e) => setNovoNome(e.target.value)}
-                      className="h-8 text-xs font-semibold"
-                    />
+                {/* Cabeçalho da Tabela de Fases */}
+                <div className="grid grid-cols-12 gap-2 px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground font-mono">
+                  <div className="col-span-1 text-center">Ordem</div>
+                  <div className="col-span-4">Nome da Fase</div>
+                  <div className="col-span-3">Probabilidade (%)</div>
+                  <div className="col-span-3 flex items-center gap-1">
+                    <Flame className="h-3 w-3 text-rose-500" />
+                    <span>Estagnação (Rotting)</span>
                   </div>
+                  <div className="col-span-1 text-center">Ações</div>
+                </div>
 
-                  <div className="sm:col-span-3">
-                    <label className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">
-                      Probabilidade (%)
-                    </label>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={novaProbabilidade}
-                        onChange={(e) => setNovaProbabilidade(parseInt(e.target.value) || 0)}
-                        className="h-8 text-xs font-mono"
-                      />
-                      <span className="text-xs font-mono text-muted-foreground">%</span>
+                {/* Lista Editável de Etapas */}
+                <div className="space-y-2.5">
+                  {etapas.map((etapa, idx) => (
+                    <div
+                      key={etapa.id}
+                      className="grid grid-cols-12 gap-2 items-center p-2.5 rounded-xl border border-border/80 bg-muted/20 hover:border-slate-300 dark:hover:border-slate-700 transition-colors"
+                    >
+                      {/* Ordem & Controles */}
+                      <div className="col-span-1 flex items-center justify-center gap-0.5">
+                        <span className="font-mono text-xs font-bold text-muted-foreground w-4 text-center">
+                          {idx + 1}
+                        </span>
+                        <div className="flex flex-col">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoverOrdem(idx, 'cima')}
+                            className="text-muted-foreground hover:text-foreground disabled:opacity-20 p-0.5"
+                            title="Subir etapa"
+                          >
+                            <ChevronUp className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === etapas.length - 1}
+                            onClick={() => handleMoverOrdem(idx, 'baixo')}
+                            className="text-muted-foreground hover:text-foreground disabled:opacity-20 p-0.5"
+                            title="Descer etapa"
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Nome da Fase */}
+                      <div className="col-span-4">
+                        <Input
+                          value={etapa.nome}
+                          onChange={(e) => handleMudarCampoEtapa(etapa.id, 'nome', e.target.value)}
+                          className="h-8 text-xs font-semibold"
+                          placeholder="Nome da etapa..."
+                        />
+                      </div>
+
+                      {/* Probabilidade % */}
+                      <div className="col-span-3 flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={etapa.probabilidade_fechamento}
+                          onChange={(e) =>
+                            handleMudarCampoEtapa(
+                              etapa.id,
+                              'probabilidade_fechamento',
+                              Math.max(0, Math.min(100, parseInt(e.target.value) || 0))
+                            )
+                          }
+                          className="h-8 text-xs font-mono"
+                        />
+                        <span className="text-xs font-mono text-muted-foreground">%</span>
+                      </div>
+
+                      {/* Dias de Estagnação / Rotting */}
+                      <div className="col-span-3 flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={etapa.dias_estagnacao}
+                          onChange={(e) =>
+                            handleMudarCampoEtapa(
+                              etapa.id,
+                              'dias_estagnacao',
+                              Math.max(1, parseInt(e.target.value) || 1)
+                            )
+                          }
+                          className="h-8 text-xs font-mono"
+                        />
+                        <span className="text-[11px] text-muted-foreground font-mono whitespace-nowrap">
+                          dias
+                        </span>
+                      </div>
+
+                      {/* Botão Excluir */}
+                      <div className="col-span-1 flex items-center justify-center">
+                        <button
+                          type="button"
+                          disabled={etapas.length <= 1}
+                          onClick={() => handleRemoverEtapa(etapa.id)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 transition-colors disabled:opacity-20"
+                          title="Excluir etapa"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <label className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">
-                      Alerta Rotting (Dias)
-                    </label>
-                    <div className="flex items-center gap-1">
-                      <Input
-                        type="number"
-                        min="1"
-                        max="180"
-                        value={novosDiasEstagnacao}
-                        onChange={(e) => setNovosDiasEstagnacao(parseInt(e.target.value) || 1)}
-                        className="h-8 text-xs font-mono"
-                      />
-                      <span className="text-[11px] font-mono text-muted-foreground">dias</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2 border-t border-border/40">
-                  <Button
+                {/* Adicionar Nova Etapa */}
+                {!adicionando ? (
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setNovoNome('');
-                      setAdicionando(false);
-                    }}
-                    className="text-xs h-7"
+                    onClick={() => setAdicionando(true)}
+                    className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-[#E42358]/40 bg-[#E42358]/5 py-2.5 text-xs font-bold text-[#E42358] hover:bg-[#E42358]/10 transition-colors"
                   >
-                    Cancelar
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={salvandoEtapas || !novoNome.trim()}
-                    onClick={handleAdicionarEtapa}
-                    className="bg-[#E42358] hover:bg-[#c91848] text-white text-xs h-7 px-3.5 font-bold"
-                  >
-                    Salvar Nova Etapa
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Rodapé com Botão Salvar Todas as Configurações */}
-            <div className="flex items-center justify-between pt-3 border-t border-border">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5 text-amber-500" />
-                <span>O alerta de rotting (fogo vermelho no card) dispara automaticamente após X dias sem novas atividades.</span>
-              </div>
-
-              <Button
-                type="button"
-                onClick={handleSalvarConfiguracoesEtapas}
-                disabled={salvandoEtapas}
-                className="bg-[#0B132B] hover:bg-[#1C2541] text-white text-xs font-bold gap-1.5 px-4 h-8.5"
-              >
-                {salvandoEtapas ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                    Salvando no Banco...
-                  </>
+                    <Plus className="h-3.5 w-3.5" />
+                    Adicionar Nova Etapa a este Funil
+                  </button>
                 ) : (
-                  <>
-                    <Check className="h-3.5 w-3.5" />
-                    Salvar Alterações de Fases & Rotting
-                  </>
+                  <div className="rounded-xl border border-[#E42358]/30 bg-[#E42358]/5 p-4 space-y-3 animate-in fade-in-0">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Plus className="h-3.5 w-3.5 text-[#E42358]" />
+                      Nova Etapa do Funil
+                    </span>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                      <div className="sm:col-span-6">
+                        <label className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">
+                          Nome da Etapa
+                        </label>
+                        <Input
+                          autoFocus
+                          placeholder="Ex: Auditoria Técnica, Contrato Assinado..."
+                          value={novoNome}
+                          onChange={(e) => setNovoNome(e.target.value)}
+                          className="h-8 text-xs font-semibold"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">
+                          Probabilidade (%)
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={novaProbabilidade}
+                            onChange={(e) => setNovaProbabilidade(parseInt(e.target.value) || 0)}
+                            className="h-8 text-xs font-mono"
+                          />
+                          <span className="text-xs font-mono text-muted-foreground">%</span>
+                        </div>
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">
+                          Alerta Rotting (Dias)
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min="1"
+                            max="180"
+                            value={novosDiasEstagnacao}
+                            onChange={(e) => setNovosDiasEstagnacao(parseInt(e.target.value) || 1)}
+                            className="h-8 text-xs font-mono"
+                          />
+                          <span className="text-[11px] font-mono text-muted-foreground">dias</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-border/40">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setNovoNome('');
+                          setAdicionando(false);
+                        }}
+                        className="text-xs h-7"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={salvandoEtapas || !novoNome.trim()}
+                        onClick={handleAdicionarEtapa}
+                        className="bg-[#E42358] hover:bg-[#c91848] text-white text-xs h-7 px-3.5 font-bold"
+                      >
+                        Salvar Nova Etapa
+                      </Button>
+                    </div>
+                  </div>
                 )}
-              </Button>
+
+                {/* Rodapé com Botão Salvar Todas as Configurações */}
+                <div className="flex items-center justify-between pt-3 border-t border-border">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    <span>O alerta de rotting (fogo vermelho no card) dispara automaticamente após X dias sem novas atividades.</span>
+                  </div>
+
+                  <Button
+                    type="button"
+                    onClick={handleSalvarConfiguracoesEtapas}
+                    disabled={salvandoEtapas}
+                    className="bg-[#0B132B] hover:bg-[#1C2541] text-white text-xs font-bold gap-1.5 px-4 h-8.5"
+                  >
+                    {salvandoEtapas ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                        Salvando alterações...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-3.5 w-3.5" />
+                        Salvar Alterações de Fases & Rotting
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
         </div>
       </div>
 

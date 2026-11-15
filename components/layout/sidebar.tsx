@@ -35,9 +35,53 @@ import { Button } from '@/components/ui/button';
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const usuarioLogado = DADOS_MEMBROS[0];
+  const [usuarioLogado, setUsuarioLogado] = React.useState<{
+    nome_completo: string;
+    cargo: string;
+    avatar_url: string;
+  }>({
+    nome_completo: 'Usuário',
+    cargo: 'visitante',
+    avatar_url:
+      'https://api.dicebear.com/7.x/initials/svg?seed=U&backgroundColor=0284c7,0ea5e9,10b981,6366f1',
+  });
   const [modalLogoutAberto, setModalLogoutAberto] = React.useState(false);
   const [saindo, setSaindo] = React.useState(false);
+
+  React.useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (!data?.user) return;
+      const u = data.user;
+      const nomeFallback =
+        (u.user_metadata?.nome_completo as string) || u.email?.split('@')[0] || 'Usuário';
+
+      const [{ data: perfil }, { data: vinculo }] = await Promise.all([
+        (supabase as any)
+          .from('perfis')
+          .select('nome_completo, avatar_url')
+          .eq('id', u.id)
+          .maybeSingle(),
+        (supabase as any)
+          .from('membros_organizacao')
+          .select('cargo')
+          .eq('perfil_id', u.id)
+          .eq('ativo', true)
+          .maybeSingle(),
+      ]);
+
+      const nomeFinal = perfil?.nome_completo || nomeFallback;
+      setUsuarioLogado({
+        nome_completo: nomeFinal,
+        cargo: vinculo?.cargo || 'vendedor',
+        avatar_url:
+          perfil?.avatar_url ||
+          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+            nomeFinal
+          )}&backgroundColor=0284c7,0ea5e9,10b981,6366f1`,
+      });
+    });
+  }, []);
 
   const handleConfirmarLogout = async () => {
     setSaindo(true);
@@ -215,7 +259,7 @@ export function Sidebar() {
           </DialogHeader>
 
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Todas as suas alterações salvas e negociações permanecem armazenadas com segurança no banco de dados. Você precisará digitar suas credenciais para entrar novamente.
+            Todas as suas alterações salvas e negociações permanecem armazenadas com segurança. Você precisará digitar suas credenciais para entrar novamente.
           </p>
 
           <DialogFooter className="gap-2 sm:gap-0">

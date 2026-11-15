@@ -362,11 +362,10 @@ export function ModalCriarEmpresa({
               <button
                 type="button"
                 onClick={() => handleTrocarTipoCliente('PJ')}
-                className={`flex items-center justify-center gap-2 rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
-                  tipoCliente === 'PJ'
+                className={`flex items-center justify-center gap-2 rounded-lg py-2 px-3 text-xs font-semibold transition-all ${tipoCliente === 'PJ'
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <Building2 className="h-3.5 w-3.5" />
                 <span>Pessoa Jurídica (CNPJ)</span>
@@ -374,11 +373,10 @@ export function ModalCriarEmpresa({
               <button
                 type="button"
                 onClick={() => handleTrocarTipoCliente('PF')}
-                className={`flex items-center justify-center gap-2 rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
-                  tipoCliente === 'PF'
+                className={`flex items-center justify-center gap-2 rounded-lg py-2 px-3 text-xs font-semibold transition-all ${tipoCliente === 'PF'
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <User className="h-3.5 w-3.5" />
                 <span>Pessoa Física (CPF)</span>
@@ -616,7 +614,7 @@ export function ModalCriarEmpresa({
             disabled={salvando || Boolean(erroDuplicidade) || consultandoCnpj}
           >
             {salvando
-              ? 'Salvando no Supabase...'
+              ? 'Salvando...'
               : empresaEditando
                 ? 'Salvar Alterações'
                 : tipoCliente === 'PJ'

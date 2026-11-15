@@ -50,11 +50,11 @@ DECLARE
     v_neg_5 UUID := 'f5555555-5555-4555-f555-555555555555'::uuid;
 BEGIN
     -- 2. USUÁRIOS DE AUTENTICAÇÃO (auth.users)
-    INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+    INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, confirmation_token, recovery_token, email_change_token_new, email_change, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
     VALUES
-        (v_user_admin_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'carlos.admin@acme.com', crypt('senha123', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"nome_completo":"Carlos Silva (Admin)"}', now(), now()),
-        (v_user_gestor_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mariana.gestora@acme.com', crypt('senha123', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"nome_completo":"Mariana Souza (Gestora)"}', now(), now()),
-        (v_user_vendedor_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'lucas.vendedor@acme.com', crypt('senha123', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}', '{"nome_completo":"Lucas Vendas (Closer)"}', now(), now())
+        (v_user_admin_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'carlos.admin@acme.com', crypt('senha123', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}', '{"nome_completo":"Carlos Silva (Admin)"}', now(), now()),
+        (v_user_gestor_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'mariana.gestora@acme.com', crypt('senha123', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}', '{"nome_completo":"Mariana Souza (Gestora)"}', now(), now()),
+        (v_user_vendedor_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'lucas.vendedor@acme.com', crypt('senha123', gen_salt('bf')), now(), '', '', '', '', '{"provider":"email","providers":["email"]}', '{"nome_completo":"Lucas Vendas (Closer)"}', now(), now())
     ON CONFLICT (id) DO NOTHING;
 
     -- 2.1 IDENTIDADES DE AUTENTICAÇÃO (auth.identities - Necessário para GoTrue / signInWithPassword)
