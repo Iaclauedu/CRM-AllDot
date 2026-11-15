@@ -311,12 +311,34 @@ export default function PaginaConfiguracoes() {
   };
 
   const handleRemoverMembro = async (membroId: string, nomeMembro: string) => {
-    if (confirm(`Tem certeza que deseja remover ${nomeMembro} da equipe?`)) {
-      setMembros((prev) => prev.filter((m) => m.id !== membroId));
-      await removerMembroDoBanco(membroId);
+    if (!usuarioAtualEhAdmin) {
       setFeedbackMembro({
-        tipo: 'info',
-        texto: `${nomeMembro} foi removido da organização.`,
+        tipo: 'erro',
+        texto: 'Acesso negado: apenas usuários Admin podem remover membros.',
+      });
+      setTimeout(() => setFeedbackMembro(null), 5000);
+      return;
+    }
+
+    if (confirm(`Tem certeza que deseja remover ${nomeMembro} da equipe?`)) {
+      const membrosAnteriores = [...membros];
+      setMembros((prev) => prev.filter((m) => m.id !== membroId));
+
+      const res = await removerMembroDoBanco(membroId);
+
+      if (!res.sucesso) {
+        setMembros(membrosAnteriores);
+        setFeedbackMembro({
+          tipo: 'erro',
+          texto: res.erro || `Não foi possível remover ${nomeMembro}.`,
+        });
+        setTimeout(() => setFeedbackMembro(null), 5000);
+        return;
+      }
+
+      setFeedbackMembro({
+        tipo: 'sucesso',
+        texto: `${nomeMembro} foi removido com sucesso.`,
       });
       setTimeout(() => setFeedbackMembro(null), 4000);
     }

@@ -2141,78 +2141,72 @@ export async function buscarMembrosDoBanco(): Promise<Membro[]> {
   try {
     const supabase = createClient() as any;
 
-    // 1. Busca todos os perfis cadastrados no Supabase
-    const { data: perfis, error: errPerfis } = await supabase
-      .from('perfis')
-      .select('id, nome_completo, email, avatar_url, telefone')
-      .order('criado_em', { ascending: true });
-
-    // 2. Busca os cargos vinculados na organização
-    const { data: membrosOrg } = await supabase
-      .from('membros_organizacao')
-      .select('organizacao_id, perfil_id, cargo, ativo')
-      .eq('ativo', true);
-
-    if (!errPerfis && perfis) {
-      const mapaCargos = new Map<string, 'admin' | 'gestor' | 'vendedor'>();
-      if (membrosOrg && membrosOrg.length > 0) {
-        membrosOrg.forEach((m: any) => {
-          if (!m.perfil_id || !m.cargo) return;
-          if (m.organizacao_id === ORG_PADRAO_ID || !mapaCargos.has(m.perfil_id)) {
-            mapaCargos.set(m.perfil_id, m.cargo);
-          }
-        });
-      }
-
-      const membrosSupabase: Membro[] = perfis.map((p: any) => ({
-        id: p.id,
-        nome_completo: p.nome_completo || 'Membro da Equipe',
-        email: p.email || '',
-        cargo: (mapaCargos.get(p.id) || 'vendedor') as 'admin' | 'gestor' | 'vendedor',
-        avatar_url:
-          p.avatar_url ||
-          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-            p.nome_completo || 'Membro'
-          )}&backgroundColor=0284c7,0ea5e9,10b981,6366f1`,
-      }));
-
-      // Garante que membros da sessão local também sejam preservados
-      const mapaExistentes = new Set(membrosSupabase.map((m) => m.email.toLowerCase()));
-      const extras = memoriaMembros.filter(
-        (m) => !mapaExistentes.has(m.email.toLowerCase())
-      );
-      const listaCombinada = [...membrosSupabase, ...extras];
-
-      memoriaMembros = listaCombinada;
-      return listaCombinada;
-    }
-
-    // Fallback: Tentativa com join padrão PostgREST
-    const { data: joinData } = await supabase
+    // 1. Busca os membros vinculados na organização com join na tabela de perfis
+    const { data: membrosOrg, error: errJoin } = await supabase
       .from('membros_organizacao')
       .select('id, cargo, ativo, perfil_id, perfis(id, nome_completo, email, avatar_url, telefone)')
+      .eq('organizacao_id', ORG_PADRAO_ID)
       .eq('ativo', true);
 
-    if (joinData && joinData.length > 0) {
-      const formatados: Membro[] = joinData.map((item: any) => ({
-        id: item.perfis?.id || item.perfil_id || item.id,
-        nome_completo: item.perfis?.nome_completo || 'Membro da Equipe',
-        email: item.perfis?.email || '',
-        cargo: (item.cargo as 'admin' | 'gestor' | 'vendedor') || 'vendedor',
-        avatar_url:
-          item.perfis?.avatar_url ||
-          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
-            item.perfis?.nome_completo || 'Membro'
-          )}`,
-      }));
+    if (!errJoin && membrosOrg && membrosOrg.length > 0) {
+      const formatados: Membro[] = membrosOrg
+        .filter((item: any) => item.perfis || item.perfil_id)
+        .map((item: any) => ({
+          id: item.perfis?.id || item.perfil_id,
+          nome_completo: item.perfis?.nome_completo || 'Membro da Equipe',
+          email: item.perfis?.email || '',
+          cargo: (item.cargo as 'admin' | 'gestor' | 'vendedor') || 'vendedor',
+          avatar_url:
+            item.perfis?.avatar_url ||
+            `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+              item.perfis?.nome_completo || 'Membro'
+            )}&backgroundColor=0284c7,0ea5e9,10b981,6366f1`,
+        }));
 
       memoriaMembros = formatados;
       return formatados;
     }
 
+    // Fallback: se o join PostgREST não trouxer dados, busca perfis que possuem vínculo ativo na organização
+    const { data: vinculos } = await supabase
+      .from('membros_organizacao')
+      .select('perfil_id, cargo')
+      .eq('organizacao_id', ORG_PADRAO_ID)
+      .eq('ativo', true);
+
+    if (vinculos && vinculos.length > 0) {
+      const mapaCargos = new Map<string, 'admin' | 'gestor' | 'vendedor'>();
+      vinculos.forEach((v: any) => {
+        if (v.perfil_id && v.cargo) mapaCargos.set(v.perfil_id, v.cargo);
+      });
+
+      const perfilIds = Array.from(mapaCargos.keys());
+      const { data: perfis } = await supabase
+        .from('perfis')
+        .select('id, nome_completo, email, avatar_url, telefone')
+        .in('id', perfilIds);
+
+      if (perfis && perfis.length > 0) {
+        const formatados: Membro[] = perfis.map((p: any) => ({
+          id: p.id,
+          nome_completo: p.nome_completo || 'Membro da Equipe',
+          email: p.email || '',
+          cargo: (mapaCargos.get(p.id) || 'vendedor') as 'admin' | 'gestor' | 'vendedor',
+          avatar_url:
+            p.avatar_url ||
+            `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+              p.nome_completo || 'Membro'
+            )}&backgroundColor=0284c7,0ea5e9,10b981,6366f1`,
+        }));
+
+        memoriaMembros = formatados;
+        return formatados;
+      }
+    }
+
     return memoriaMembros;
   } catch (err) {
-    console.warn('Erro ao consultar Supabase, utilizando membros locais:', err);
+    console.warn('Erro ao consultar membros:', err);
     return memoriaMembros;
   }
 }
@@ -2334,21 +2328,26 @@ export async function atualizarCargoMembroNoBanco(
   }
 }
 
-export async function removerMembroDoBanco(membroId: string): Promise<boolean> {
-  memoriaMembros = memoriaMembros.filter((m) => m.id !== membroId);
-
+export async function removerMembroDoBanco(
+  membroId: string
+): Promise<{ sucesso: boolean; erro?: string }> {
   try {
-    const supabase = createClient() as any;
-    await supabase
-      .from('membros_organizacao')
-      .delete()
-      .eq('organizacao_id', ORG_PADRAO_ID)
-      .eq('perfil_id', membroId);
+    const res = await fetch(`/api/membros?id=${encodeURIComponent(membroId)}`, {
+      method: 'DELETE',
+    });
 
-    return true;
+    if (res.ok) {
+      memoriaMembros = memoriaMembros.filter((m) => m.id !== membroId);
+      return { sucesso: true };
+    }
+
+    const json = await res.json().catch(() => null);
+    const erroMsg = json?.erro || 'Não foi possível remover o membro da organização.';
+    console.error('Erro ao remover membro via API:', erroMsg);
+    return { sucesso: false, erro: erroMsg };
   } catch (err) {
-    console.warn('Erro ao remover membro no banco, removido localmente:', err);
-    return true;
+    console.error('Erro ao chamar rota de remoção de membro:', err);
+    return { sucesso: false, erro: 'Erro de comunicação ao remover membro.' };
   }
 }
 
