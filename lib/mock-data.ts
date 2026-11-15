@@ -136,7 +136,8 @@ export type CategoriaProdutoNome =
   | 'Cordões'
   | 'Insumos de Impressora'
   | 'Papelaria'
-  | 'Comunicação Visual';
+  | 'Comunicação Visual'
+  | 'Garrafas, squeezes, copos';
 
 export interface CategoriaProdutoItem {
   id: string;
@@ -174,6 +175,12 @@ export const DADOS_CATEGORIAS_PRODUTO: CategoriaProdutoItem[] = [
     id: '22222222-0005-4000-a000-000000000005',
     nome: 'Comunicação Visual',
     ordem: 5,
+    ativo: true,
+  },
+  {
+    id: '22222222-0006-4000-a000-000000000006',
+    nome: 'Garrafas, squeezes, copos',
+    ordem: 6,
     ativo: true,
   },
 ];
