@@ -32,9 +32,17 @@ export async function POST(request: NextRequest) {
     const redirectUrl = `${appUrl}/login?type=recovery&email=${encodeURIComponent(
       emailNormalizado
     )}`;
-    const linkAtivacao = `${appUrl}/login?convite=ativo&email=${encodeURIComponent(
+    let linkAtivacao = `${appUrl}/login?convite=ativo&email=${encodeURIComponent(
       emailNormalizado
     )}`;
+    const senhaLimpa = typeof senha_inicial === 'string' ? senha_inicial.trim() : '';
+
+    if (senhaLimpa && senhaLimpa.length < 6) {
+      return NextResponse.json(
+        { erro: 'A senha provisória deve ter no mínimo 6 caracteres.' },
+        { status: 400 }
+      );
+    }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -69,20 +77,52 @@ export async function POST(request: NextRequest) {
 
         if (existente) {
           userId = existente.id;
-        } else if (senha_inicial) {
+          if (senhaLimpa) {
+            const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(
+              existente.id,
+              {
+                password: senhaLimpa,
+                email_confirm: true,
+                user_metadata: {
+                  ...(existente.user_metadata || {}),
+                  nome_completo: nomeLimpo,
+                  cargo: cargoLimpo,
+                },
+              }
+            );
+            if (updateErr) {
+              return NextResponse.json(
+                { erro: updateErr.message || 'Não foi possível definir a senha do usuário.' },
+                { status: 400 }
+              );
+            }
+            emailEnviado = true;
+          } else {
+            const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+              type: 'recovery',
+              email: emailNormalizado,
+              options: { redirectTo: `${appUrl}/auth/callback?next=/configuracoes` },
+            });
+            if (linkData?.properties?.action_link) {
+              linkAtivacao = linkData.properties.action_link;
+            }
+          }
+        } else if (senhaLimpa) {
           const { data: created, error: createErr } =
             await supabaseAdmin.auth.admin.createUser({
               email: emailNormalizado,
-              password: senha_inicial,
+              password: senhaLimpa,
               email_confirm: true,
               user_metadata: { nome_completo: nomeLimpo, cargo: cargoLimpo },
             });
           if (createErr) {
-            erroDetalhado = createErr.message;
-          } else {
-            userId = created.user?.id || null;
-            emailEnviado = true;
+            return NextResponse.json(
+              { erro: createErr.message || 'Não foi possível criar a conta do usuário.' },
+              { status: 400 }
+            );
           }
+          userId = created.user?.id || null;
+          emailEnviado = true;
         } else {
           const { data: invited, error: inviteError } =
             await supabaseAdmin.auth.admin.inviteUserByEmail(emailNormalizado, {
@@ -101,6 +141,24 @@ export async function POST(request: NextRequest) {
             ) {
               avisoSmtp =
                 'O limite de envio do servidor de e-mails padrão foi atingido ou o SMTP precisa ser configurado.';
+            }
+            // Garante criação da conta e link real de ativação mesmo sem SMTP
+            const { data: createdNoPass, error: createNoPassErr } =
+              await supabaseAdmin.auth.admin.createUser({
+                email: emailNormalizado,
+                email_confirm: true,
+                user_metadata: { nome_completo: nomeLimpo, cargo: cargoLimpo },
+              });
+            if (!createNoPassErr && createdNoPass.user?.id) {
+              userId = createdNoPass.user.id;
+              const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+                type: 'recovery',
+                email: emailNormalizado,
+                options: { redirectTo: `${appUrl}/auth/callback?next=/configuracoes` },
+              });
+              if (linkData?.properties?.action_link) {
+                linkAtivacao = linkData.properties.action_link;
+              }
             }
           }
         }

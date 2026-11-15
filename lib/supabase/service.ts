@@ -2227,28 +2227,27 @@ export async function adicionarMembroNoBanco(dados: {
 
   let idReal = crypto.randomUUID();
 
-  // Chama /api/convite primeiro para criar/convidar em auth.users e gravar perfis + membros_organizacao
-  try {
-    const res = await fetch('/api/convite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: emailNormalizado,
-        nome_completo: nomeLimpo,
-        cargo: dados.cargo,
-        telefone: dados.telefone,
-        avatar_url: avatarFinal,
-        senha_inicial: dados.senha_inicial,
-      }),
-    });
-    if (res.ok) {
-      const json = await res.json();
-      if (json?.userId) {
-        idReal = json.userId;
-      }
-    }
-  } catch (e) {
-    console.warn('Falha na rota de convite:', e);
+  // Chama /api/convite para criar/convidar em auth.users e gravar perfis + membros_organizacao
+  const res = await fetch('/api/convite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: emailNormalizado,
+      nome_completo: nomeLimpo,
+      cargo: dados.cargo,
+      telefone: dados.telefone,
+      avatar_url: avatarFinal,
+      senha_inicial: dados.senha_inicial,
+    }),
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.erro || 'Não foi possível cadastrar o membro.');
+  }
+
+  if (json?.userId) {
+    idReal = json.userId;
   }
 
   const novoMembro: Membro = {
@@ -2269,27 +2268,16 @@ export async function dispararConviteEmail(dados: {
   cargo: string;
   senha_inicial?: string;
 }): Promise<{ sucesso: boolean; emailEnviado: boolean; linkAtivacao: string; avisoSmtp?: string }> {
-  try {
-    const res = await fetch('/api/convite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dados),
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.warn('Erro ao chamar rota de convite:', err);
+  const res = await fetch('/api/convite', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dados),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.erro || 'Não foi possível processar o convite.');
   }
-
-  const appUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  return {
-    sucesso: true,
-    emailEnviado: false,
-    linkAtivacao: `${appUrl}/login?convite=ativo&email=${encodeURIComponent(dados.email)}`,
-    avisoSmtp:
-      'O servidor SMTP precisa ser configurado para disparos externos. Você pode copiar o link direto de ativação.',
-  };
+  return json;
 }
 
 export async function atualizarCargoMembroNoBanco(

@@ -142,6 +142,12 @@ export function ModalConvidarMembro({
       return;
     }
 
+    const senhaTrim = senhaInicial.trim();
+    if (senhaTrim && senhaTrim.length < 6) {
+      setErro('A senha provisória deve ter no mínimo 6 caracteres.');
+      return;
+    }
+
     setSalvando(true);
 
     try {
@@ -150,14 +156,15 @@ export function ModalConvidarMembro({
         email: emailTrim,
         cargo,
         telefone: telefone.trim() || undefined,
+        senha_inicial: senhaTrim || undefined,
       });
 
-      // Dispara envio de e-mail e gera link direto
+      // Dispara envio de e-mail / obtém link direto de ativação
       const resultadoEnvio = await dispararConviteEmail({
         email: emailTrim,
         nome_completo: nomeTrim,
         cargo,
-        senha_inicial: senhaInicial.trim() || undefined,
+        senha_inicial: senhaTrim || undefined,
       });
 
       onMembroAdicionado(novoMembro);
