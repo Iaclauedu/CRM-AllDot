@@ -2193,58 +2193,49 @@ export async function adicionarMembroNoBanco(dados: {
   cargo: 'admin' | 'gestor' | 'vendedor';
   telefone?: string;
   avatar_url?: string;
+  senha_inicial?: string;
 }): Promise<Membro> {
-  const novoId = crypto.randomUUID();
-  const novoMembro: Membro = {
-    id: novoId,
-    nome_completo: dados.nome_completo.trim(),
-    email: dados.email.trim().toLowerCase(),
-    cargo: dados.cargo,
-    avatar_url:
-      dados.avatar_url ||
-      `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(dados.nome_completo)}&backgroundColor=0284c7,0ea5e9,10b981,6366f1`,
-  };
+  const emailNormalizado = dados.email.trim().toLowerCase();
+  const nomeLimpo = dados.nome_completo.trim();
+  const avatarFinal =
+    dados.avatar_url ||
+    `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nomeLimpo)}&backgroundColor=0284c7,0ea5e9,10b981,6366f1`;
 
-  memoriaMembros = [novoMembro, ...memoriaMembros];
+  let idReal = crypto.randomUUID();
 
+  // Chama /api/convite primeiro para criar/convidar em auth.users e gravar perfis + membros_organizacao
   try {
-    const supabase = createClient() as any;
-
-    // 1. Cadastra ou atualiza o perfil
-    await supabase.from('perfis').upsert({
-      id: novoId,
-      nome_completo: novoMembro.nome_completo,
-      email: novoMembro.email,
-      telefone: dados.telefone || null,
-      avatar_url: novoMembro.avatar_url,
-    });
-
-    // 2. Vincula à organização com o nível de permissão
-    await supabase.from('membros_organizacao').insert({
-      organizacao_id: ORG_PADRAO_ID,
-      perfil_id: novoId,
-      cargo: novoMembro.cargo,
-      ativo: true,
-    });
-  } catch (err) {
-    console.warn('Banco remoto indisponível, membro mantido na sessão local:', err);
-  }
-
-  // 3. Dispara a requisição de envio de e-mail / geração de link
-  try {
-    await fetch('/api/convite', {
+    const res = await fetch('/api/convite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: novoMembro.email,
-        nome_completo: novoMembro.nome_completo,
-        cargo: novoMembro.cargo,
+        email: emailNormalizado,
+        nome_completo: nomeLimpo,
+        cargo: dados.cargo,
+        telefone: dados.telefone,
+        avatar_url: avatarFinal,
+        senha_inicial: dados.senha_inicial,
       }),
     });
+    if (res.ok) {
+      const json = await res.json();
+      if (json?.userId) {
+        idReal = json.userId;
+      }
+    }
   } catch (e) {
     console.warn('Falha na rota de convite:', e);
   }
 
+  const novoMembro: Membro = {
+    id: idReal,
+    nome_completo: nomeLimpo,
+    email: emailNormalizado,
+    cargo: dados.cargo,
+    avatar_url: avatarFinal,
+  };
+
+  memoriaMembros = [novoMembro, ...memoriaMembros.filter((m) => m.email !== emailNormalizado)];
   return novoMembro;
 }
 
@@ -4543,10 +4534,10 @@ export async function listarListasMarketingNoBanco(): Promise<ListaMarketing[]> 
         criterios: (row.criterios_json || {}) as CriteriosSegmentacaoLista,
         contatos_estaticos: Array.isArray(row.listas_marketing_contatos)
           ? row.listas_marketing_contatos.map((c: { contato_id?: string; email: string; nome?: string }) => ({
-              contato_id: c.contato_id,
-              email: c.email,
-              nome: c.nome,
-            }))
+            contato_id: c.contato_id,
+            email: c.email,
+            nome: c.nome,
+          }))
           : [],
         ativa: row.ativa ?? true,
         criado_em: row.criado_em,
@@ -4671,8 +4662,8 @@ export async function resolverDestinatariosLista(
         motivo_bloqueio: contatoReal?.descadastrado_email
           ? 'Contato descadastrado (opt-out)'
           : contatoReal?.consentimento_email === false
-          ? 'Sem consentimento de e-mail'
-          : undefined,
+            ? 'Sem consentimento de e-mail'
+            : undefined,
       });
     }
   } else {
@@ -4691,8 +4682,8 @@ export async function resolverDestinatariosLista(
           motivo_bloqueio: c.descadastrado_email
             ? 'Contato descadastrado (opt-out)'
             : c.consentimento_email === false
-            ? 'Sem consentimento de e-mail'
-            : undefined,
+              ? 'Sem consentimento de e-mail'
+              : undefined,
         });
       }
     }
@@ -4739,9 +4730,9 @@ export async function resolverDestinatariosLista(
 
       const bloqueado = Boolean(
         contatoPrincipal?.descadastrado_email ||
-          contatoPrincipal?.consentimento_email === false ||
-          neg.descadastrado_email ||
-          neg.consentimento_email === false
+        contatoPrincipal?.consentimento_email === false ||
+        neg.descadastrado_email ||
+        neg.consentimento_email === false
       );
 
       candidatos.set(emailNorm, {
