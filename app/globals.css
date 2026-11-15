@@ -100,3 +100,36 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Regras de Impressão de Alta Qualidade para a Proposta Comercial BrinDay */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #area-impressao-proposta,
+  #area-impressao-proposta * {
+    visibility: visible;
+  }
+
+  #area-impressao-proposta {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  .print\\:break-after-page {
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+}

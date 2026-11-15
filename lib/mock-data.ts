@@ -282,6 +282,14 @@ export interface Negocio {
     valor_unitario: number;
     subtotal: number;
   }[];
+  produtos_vinculados?: {
+    produto_id: string;
+    nome_produto?: string;
+    quantidade: number;
+    valor_unitario: number;
+    subtotal: number;
+    produto?: { nome: string };
+  }[];
 }
 
 export interface Funil {

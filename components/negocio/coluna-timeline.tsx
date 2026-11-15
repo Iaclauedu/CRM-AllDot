@@ -3,6 +3,7 @@
 import * as React from 'react';
 import {
   FileText,
+  FileSpreadsheet,
   CheckSquare,
   PhoneCall,
   MessageCircle,
@@ -19,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { formatarDataHora, formatarData } from '@/lib/utils';
 import type { Negocio, Atividade } from '@/lib/mock-data';
+import { ModalPropostaBrinday } from '@/components/negocio/modal-proposta-brinday';
 
 interface ColunaTimelineProps {
   negocio: Negocio;
@@ -32,6 +34,7 @@ export function ColunaTimeline({
   onConcluirAtividade,
 }: ColunaTimelineProps) {
   const [abaAtiva, setAbaAtiva] = React.useState<'nota' | 'tarefa' | 'log'>('nota');
+  const [modalPropostaAberta, setModalPropostaAberta] = React.useState(false);
 
   // Estados dos formulários de ação rápida
   const [conteudoNota, setConteudoNota] = React.useState('');
@@ -145,6 +148,16 @@ export function ColunaTimeline({
           >
             <PhoneCall className="h-3.5 w-3.5 text-sky-400" />
             <span>Log Ligação/WhatsApp</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setModalPropostaAberta(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all bg-[#034550]/10 text-[#034550] dark:bg-[#D4EF2E]/15 dark:text-[#D4EF2E] hover:bg-[#034550]/20 dark:hover:bg-[#D4EF2E]/25 border border-[#034550]/25 dark:border-[#D4EF2E]/40 shadow-sm ml-auto"
+            title="Gerar Proposta Comercial Oficial BrinDay"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5 text-[#034550] dark:text-[#D4EF2E]" />
+            <span>Proposta Comercial</span>
           </button>
         </div>
 
@@ -366,6 +379,13 @@ export function ColunaTimeline({
           );
         })}
       </div>
+
+      <ModalPropostaBrinday
+        open={modalPropostaAberta}
+        onOpenChange={setModalPropostaAberta}
+        negocio={negocio}
+        onRegistrarAtividade={onAdicionarAtividade}
+      />
     </div>
   );
 }
