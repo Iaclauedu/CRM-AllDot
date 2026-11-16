@@ -289,21 +289,26 @@ async function openAndAuthenticate(
   }
 
   if (config.usuario_smtp && config.senha_smtp) {
+    const hostLower = (config.smtp_host || '').toLowerCase();
+    const senhaFinal = hostLower.includes('gmail') || hostLower.includes('google')
+      ? config.senha_smtp.replace(/\s+/g, '')
+      : config.senha_smtp;
+
     const authLogin = await session.command('AUTH LOGIN');
     if (authLogin.code === 334) {
-      const userRes = await session.command(Buffer.from(config.usuario_smtp, 'utf8').toString('base64'));
+      const userRes = await session.command(Buffer.from(config.usuario_smtp.trim(), 'utf8').toString('base64'));
       if (userRes.code !== 334) {
         session.close();
         throw new SmtpCommandError(userRes.code, userRes.message);
       }
-      const passRes = await session.command(Buffer.from(config.senha_smtp, 'utf8').toString('base64'));
+      const passRes = await session.command(Buffer.from(senhaFinal, 'utf8').toString('base64'));
       if (passRes.code !== 235) {
         session.close();
         throw new SmtpCommandError(passRes.code, passRes.message);
       }
     } else {
       const plainToken = Buffer.from(
-        `\0${config.usuario_smtp}\0${config.senha_smtp}`,
+        `\0${config.usuario_smtp.trim()}\0${senhaFinal}`,
         'utf8'
       ).toString('base64');
       const plainRes = await session.command(`AUTH PLAIN ${plainToken}`);

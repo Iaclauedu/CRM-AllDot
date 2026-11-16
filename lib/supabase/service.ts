@@ -4462,6 +4462,31 @@ export async function executarAutomacoesPorEvento(params: {
 
       logsGerados.push(logCriado);
 
+      if (typeof window !== 'undefined') {
+        try {
+          fetch('/api/emails/enviar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              acao: 'disparar',
+              automacao_id: regra.id,
+              automacao_nome: regra.nome,
+              template_id: template.id,
+              template_nome: template.nome,
+              negocio_id: negocio.id,
+              negocio_titulo: negocio.titulo,
+              destinatario_email: destinatarioEmail,
+              destinatario_nome: destinatarioNome,
+              assunto: assuntoFinal,
+              gatilho: regra.gatilho,
+              qtd_anexos: (template.anexos || []).length,
+            }),
+          }).catch((err) => console.warn('Erro ao disparar envio de e-mail via API:', err));
+        } catch {
+          // ignore
+        }
+      }
+
       await salvarAutomacaoEmailNoBanco({
         ...regra,
         total_disparos: (regra.total_disparos || 0) + 1,
@@ -4639,6 +4664,31 @@ export async function verificarEDispararInatividadeEmail(): Promise<{
         });
 
         logsGerados.push(log);
+
+        if (typeof window !== 'undefined') {
+          try {
+            fetch('/api/emails/enviar', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                acao: 'disparar',
+                automacao_id: regra.id,
+                automacao_nome: regra.nome,
+                template_id: template.id,
+                template_nome: template.nome,
+                negocio_id: neg.id,
+                negocio_titulo: neg.titulo,
+                destinatario_email: destinatarioEmail,
+                destinatario_nome: destinatarioNome,
+                assunto: assuntoFinal,
+                gatilho: 'tempo_inatividade',
+                qtd_anexos: (template.anexos || []).length,
+              }),
+            }).catch((err) => console.warn('Erro ao disparar envio inatividade via API:', err));
+          } catch {
+            // ignore
+          }
+        }
 
         await salvarAutomacaoEmailNoBanco({
           ...regra,
