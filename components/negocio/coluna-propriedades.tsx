@@ -33,6 +33,7 @@ import {
   buscarMembrosDoBanco,
   adicionarProdutoAoNegocio,
   removerProdutoDoNegocio,
+  atualizarProdutoNoNegocio,
 } from '@/lib/supabase/service';
 import { formatarMoeda, formatarData } from '@/lib/utils';
 
@@ -67,8 +68,16 @@ export function ColunaPropriedades({
     DADOS_PRODUTOS[0]?.id || ''
   );
   const [quantidade, setQuantidade] = React.useState<number>(1);
+  const [valorUnitarioCustom, setValorUnitarioCustom] = React.useState<number>(
+    DADOS_PRODUTOS[0]?.valor || 0
+  );
   const [salvandoAcao, setSalvandoAcao] = React.useState(false);
   const [removendoId, setRemovendoId] = React.useState<string | null>(null);
+
+  // Estados para edição direta de item já existente no card
+  const [editandoItemId, setEditandoItemId] = React.useState<string | null>(null);
+  const [editandoQtd, setEditandoQtd] = React.useState<number>(1);
+  const [editandoValorUnitario, setEditandoValorUnitario] = React.useState<number>(0);
 
   // Sincroniza valorTemp e origemLead caso o negócio mude externamente
   React.useEffect(() => {
@@ -120,20 +129,40 @@ export function ColunaPropriedades({
     }
   };
 
-  // Adicionar produto ao negócio (funciona em QUALQUER etapa do funil)
+  const handleAbrirAdicionar = () => {
+    const prod = catalogoProdutos.find((p) => p.id === produtoSelecionadoId) || catalogoProdutos[0];
+    if (prod) {
+      setProdutoSelecionadoId(prod.id);
+      setValorUnitarioCustom(prod.valor);
+    }
+    setQuantidade(1);
+    setAdicionandoProduto(true);
+  };
+
+  const handleTrocarProdutoSelecionado = (pId: string) => {
+    setProdutoSelecionadoId(pId);
+    const prod = catalogoProdutos.find((p) => p.id === pId);
+    if (prod) {
+      setValorUnitarioCustom(prod.valor);
+    }
+  };
+
+  // Adicionar produto ao negócio com valor negociado (sem alterar o catálogo de produtos)
   const handleConfirmarAdicionarProduto = async () => {
     const prod = catalogoProdutos.find((p) => p.id === produtoSelecionadoId);
     if (!prod || quantidade <= 0) return;
 
     setSalvandoAcao(true);
     try {
-      // Salva no Supabase
+      const precoUnit = Number(valorUnitarioCustom) >= 0 ? Number(valorUnitarioCustom) : prod.valor;
+
+      // Salva no Supabase (negocios_produtos) com o valor customizado do negócio
       await adicionarProdutoAoNegocio(
         negocio.id,
         prod.id,
         prod.nome,
         quantidade,
-        prod.valor
+        precoUnit
       );
 
       // Atualiza estado local do negócio
@@ -146,15 +175,16 @@ export function ColunaPropriedades({
         produtosAtuais[indexExistente] = {
           ...itemExistente,
           quantidade: novaQtd,
-          subtotal: novaQtd * itemExistente.valor_unitario,
+          valor_unitario: precoUnit,
+          subtotal: novaQtd * precoUnit,
         };
       } else {
         produtosAtuais.push({
           produto_id: prod.id,
           nome: prod.nome,
           quantidade: Number(quantidade),
-          valor_unitario: prod.valor,
-          subtotal: Number(quantidade) * prod.valor,
+          valor_unitario: precoUnit,
+          subtotal: Number(quantidade) * precoUnit,
         });
       }
 
@@ -172,6 +202,60 @@ export function ColunaPropriedades({
       setQuantidade(1);
     } catch (err) {
       console.error('Erro ao adicionar produto:', err);
+    } finally {
+      setSalvandoAcao(false);
+    }
+  };
+
+  // Iniciar e salvar edição de preço/quantidade de item já no card
+  const handleIniciarEdicaoItem = (item: {
+    produto_id: string;
+    quantidade: number;
+    valor_unitario: number;
+  }) => {
+    setEditandoItemId(item.produto_id);
+    setEditandoQtd(item.quantidade);
+    setEditandoValorUnitario(item.valor_unitario);
+  };
+
+  const handleSalvarEdicaoItem = async (produtoId: string) => {
+    setSalvandoAcao(true);
+    try {
+      const novaQtd = Math.max(1, Number(editandoQtd) || 1);
+      const novoPreco = Math.max(0, Number(editandoValorUnitario) || 0);
+
+      await atualizarProdutoNoNegocio(
+        negocio.id,
+        produtoId,
+        novaQtd,
+        novoPreco
+      );
+
+      const produtosAtuais = (negocio.produtos || []).map((p) => {
+        if (p.produto_id === produtoId) {
+          return {
+            ...p,
+            quantidade: novaQtd,
+            valor_unitario: novoPreco,
+            subtotal: novaQtd * novoPreco,
+          };
+        }
+        return p;
+      });
+
+      const novoValorTotal = produtosAtuais.reduce(
+        (acc, p) => acc + (p.subtotal || p.quantidade * p.valor_unitario),
+        0
+      );
+
+      onAtualizarNegocio({
+        produtos: produtosAtuais,
+        valor: novoValorTotal,
+      });
+
+      setEditandoItemId(null);
+    } catch (err) {
+      console.error('Erro ao editar item no negócio:', err);
     } finally {
       setSalvandoAcao(false);
     }
@@ -203,7 +287,7 @@ export function ColunaPropriedades({
   };
 
   const produtoSelecionado = catalogoProdutos.find((p) => p.id === produtoSelecionadoId);
-  const subtotalPrevia = (produtoSelecionado?.valor || 0) * (quantidade || 1);
+  const subtotalPrevia = (Number(valorUnitarioCustom) || 0) * (quantidade || 1);
 
   return (
     <div className="space-y-5 text-xs text-foreground p-1 select-none">
@@ -620,7 +704,7 @@ export function ColunaPropriedades({
           {/* Botão Adicionar Produto (Livre em qualquer etapa) */}
           {!adicionandoProduto && (
             <button
-              onClick={() => setAdicionandoProduto(true)}
+              onClick={handleAbrirAdicionar}
               className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium bg-[#E42358]/10 text-[#E42358] hover:bg-[#E42358]/20 transition-colors"
               title="Adicionar produto ou serviço a este negócio"
             >
@@ -653,13 +737,13 @@ export function ColunaPropriedades({
                 </label>
                 <select
                   value={produtoSelecionadoId}
-                  onChange={(e) => setProdutoSelecionadoId(e.target.value)}
+                  onChange={(e) => handleTrocarProdutoSelecionado(e.target.value)}
                   className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-xs text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   {catalogoProdutos.length > 0 ? (
                     catalogoProdutos.map((prod) => (
                       <option key={prod.id} value={prod.id} className="bg-card">
-                        {prod.nome} ({prod.unidade_medida || 'Unidade'}) — {formatarMoeda(prod.valor)}
+                        {prod.nome} ({prod.unidade_medida || 'Unidade'}) — Catálogo: {formatarMoeda(prod.valor)}
                       </option>
                     ))
                   ) : (
@@ -670,7 +754,7 @@ export function ColunaPropriedades({
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-muted-foreground text-[10px] block mb-0.5">
                     Quantidade
@@ -681,6 +765,21 @@ export function ColunaPropriedades({
                     value={quantidade}
                     onChange={(e) => setQuantidade(Math.max(1, parseInt(e.target.value) || 1))}
                     className="h-8 text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-muted-foreground text-[10px] block mb-0.5">
+                    Valor Unitário Negociado (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={valorUnitarioCustom}
+                    onChange={(e) => setValorUnitarioCustom(parseFloat(e.target.value) || 0)}
+                    className="h-8 text-xs font-mono font-medium text-emerald-400"
+                    title="Altere o valor do item exclusivamente para este negócio sem alterar o cadastro geral do produto"
                   />
                 </div>
 
@@ -728,39 +827,113 @@ export function ColunaPropriedades({
         {/* Lista de Produtos Vinculados */}
         {negocio.produtos && negocio.produtos.length > 0 ? (
           <div className="space-y-2">
-            {negocio.produtos.map((item) => (
-              <div
-                key={item.produto_id}
-                className="group rounded-lg border border-border/60 bg-muted/20 p-2.5 space-y-1.5 transition-colors hover:border-border"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-foreground truncate" title={item.nome}>
-                    {item.nome}
-                  </span>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="font-mono text-emerald-400 font-semibold text-xs">
-                      {formatarMoeda(item.subtotal || item.quantidade * item.valor_unitario)}
+            {negocio.produtos.map((item) =>
+              editandoItemId === item.produto_id ? (
+                <div
+                  key={item.produto_id}
+                  className="rounded-lg border border-[#E42358]/40 bg-[#E42358]/5 p-2.5 space-y-2 animate-in fade-in-0 duration-150"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground truncate text-xs" title={item.nome}>
+                      {item.nome}
                     </span>
-                    <button
-                      onClick={() => handleRemoverProduto(item.produto_id)}
-                      disabled={removendoId === item.produto_id}
-                      className="p-1 rounded text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-                      title="Excluir este produto do negócio"
-                    >
-                      {removendoId === item.produto_id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-500" />
-                      ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
-                      )}
-                    </button>
+                    <span className="text-[10px] text-muted-foreground font-mono">Editar Valor/Qtd</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-muted-foreground text-[10px] block mb-0.5">Quantidade</label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={editandoQtd}
+                        onChange={(e) => setEditandoQtd(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-muted-foreground text-[10px] block mb-0.5">
+                        Preço Unitário (R$)
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editandoValorUnitario}
+                        onChange={(e) => setEditandoValorUnitario(parseFloat(e.target.value) || 0)}
+                        className="h-7 text-xs font-mono font-medium text-emerald-400"
+                        title="Altera o valor apenas neste card"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                    <span className="font-mono text-emerald-400 font-semibold text-xs">
+                      Total: {formatarMoeda((editandoQtd || 1) * (editandoValorUnitario || 0))}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setEditandoItemId(null)}
+                        className="px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                      >
+                        Cancelar
+                      </button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleSalvarEdicaoItem(item.produto_id)}
+                        disabled={salvandoAcao}
+                        className="bg-[#E42358] hover:bg-[#c91848] text-white text-[11px] h-6 px-2.5"
+                      >
+                        {salvandoAcao ? (
+                          <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        ) : (
+                          <Check className="h-3 w-3 mr-1" />
+                        )}
+                        Salvar
+                      </Button>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground font-mono">
-                  <span>Qtd: {item.quantidade}</span>
-                  <span>Unit: {formatarMoeda(item.valor_unitario)}</span>
+              ) : (
+                <div
+                  key={item.produto_id}
+                  className="group rounded-lg border border-border/60 bg-muted/20 p-2.5 space-y-1.5 transition-colors hover:border-border"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground truncate" title={item.nome}>
+                      {item.nome}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="font-mono text-emerald-400 font-semibold text-xs mr-1">
+                        {formatarMoeda(item.subtotal || item.quantidade * item.valor_unitario)}
+                      </span>
+                      <button
+                        onClick={() => handleIniciarEdicaoItem(item)}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        title="Editar quantidade ou valor negociado deste item"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleRemoverProduto(item.produto_id)}
+                        disabled={removendoId === item.produto_id}
+                        className="p-1 rounded text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                        title="Excluir este produto do negócio"
+                      >
+                        {removendoId === item.produto_id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-500" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground font-mono">
+                    <span>Qtd: {item.quantidade}</span>
+                    <span>Unit: {formatarMoeda(item.valor_unitario)}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
         ) : (
           <div className="rounded-lg border border-dashed border-border/60 p-3 text-center text-muted-foreground text-[11px]">

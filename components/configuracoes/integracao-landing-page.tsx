@@ -208,30 +208,62 @@ export function IntegracaoLandingPage() {
   };
 
   const originUrl =
-    typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+    typeof window !== 'undefined'
+      ? (window.location.origin.includes('localhost')
+          ? 'https://alldot-crm.vercel.app'
+          : window.location.origin)
+      : 'https://alldot-crm.vercel.app';
   const webhookEndpoint = `${originUrl}/api/webhooks/landing-page`;
 
-  const scriptIntegracao = `<!-- Script de Integração AllDot CRM para https://brindes.brindaypersonalizados.com.br/ -->
+  const scriptIntegracao = `<!-- Script AllDot CRM para WordPress & Elementor (https://brindes.brindaypersonalizados.com.br/) -->
 <script>
 (function() {
   const WEBHOOK_URL = "${webhookEndpoint}";
 
   function getParam(name) {
-    const params = new URLSearchParams(window.location.search);
-    return params.get(name) || "";
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name) || "";
+    } catch(e) { return ""; }
   }
 
-  document.addEventListener("submit", function(e) {
-    const form = e.target;
-    if (!form || form.tagName !== "FORM") return;
+  function findVal(form, keywords, types) {
+    if (!form || !form.elements) return "";
+    types = types || [];
+    // 1. Procura por name, id ou placeholder
+    for (let i = 0; i < form.elements.length; i++) {
+      const el = form.elements[i];
+      if (!el) continue;
+      const name = (el.name || "").toLowerCase();
+      const id = (el.id || "").toLowerCase();
+      const placeholder = (el.placeholder || "").toLowerCase();
+      for (let k = 0; k < keywords.length; k++) {
+        const kw = keywords[k].toLowerCase();
+        if (name.includes(kw) || id.includes(kw) || placeholder.includes(kw)) {
+          if (el.value && el.value.trim()) return el.value.trim();
+        }
+      }
+    }
+    // 2. Fallback por tipo de input (email, tel)
+    if (types.length > 0) {
+      for (let i = 0; i < form.elements.length; i++) {
+        const el = form.elements[i];
+        if (!el) continue;
+        const type = (el.type || "").toLowerCase();
+        if (types.includes(type)) {
+          if (el.value && el.value.trim()) return el.value.trim();
+        }
+      }
+    }
+    return "";
+  }
 
-    const formData = new FormData(form);
-    const entries = Object.fromEntries(formData.entries());
-
-    const nome = entries.nome || entries.name || entries["form_fields[nome]"] || entries["form_fields[name]"] || "";
-    const email = entries.email || entries["e-mail"] || entries["form_fields[email]"] || "";
-    const empresa = entries.empresa || entries.company || entries["form_fields[empresa]"] || "";
-    const celular = entries.celular || entries.telefone || entries.whatsapp || entries["form_fields[celular]"] || entries["form_fields[telefone]"] || "";
+  function processarFormulario(form) {
+    if (!form) return;
+    const nome = findVal(form, ["nome", "name", "nome_completo"]);
+    const email = findVal(form, ["email", "e-mail", "mail"], ["email"]);
+    const empresa = findVal(form, ["empresa", "company", "organizacao"]);
+    const celular = findVal(form, ["celular", "whatsapp", "telefone", "phone", "tel"], ["tel"]);
 
     if (!nome && !email && !celular) return;
 
@@ -250,7 +282,7 @@ export function IntegracaoLandingPage() {
       utm_campaign: getParam("utm_campaign"),
       utm_content: getParam("utm_content"),
       utm_term: getParam("utm_term"),
-      produto_interesse: entries.produto_interesse || entries.interesse || getParam("produto") || "",
+      produto_interesse: findVal(form, ["produto", "interesse"]) || getParam("produto") || "",
       data_hora_cadastro: new Date().toISOString()
     };
 
@@ -262,7 +294,27 @@ export function IntegracaoLandingPage() {
     }).catch(function(err) {
       console.warn("AllDot CRM Webhook:", err);
     });
+  }
+
+  // 1. Captura no envio nativo do formulário (antes do preventDefault)
+  document.addEventListener("submit", function(e) {
+    const form = e.target;
+    if (form && form.tagName === "FORM") {
+      processarFormulario(form);
+    }
   }, true);
+
+  // 2. Suporte direto ao evento AJAX do Elementor Pro (submit_success)
+  if (typeof window !== "undefined") {
+    window.addEventListener("load", function() {
+      if (window.jQuery) {
+        window.jQuery(document).on("submit_success", function(event, response) {
+          const form = event.target || (event.currentTarget && event.currentTarget.activeElement ? event.currentTarget.activeElement.closest("form") : null);
+          if (form) processarFormulario(form);
+        });
+      }
+    });
+  }
 })();
 </script>`;
 

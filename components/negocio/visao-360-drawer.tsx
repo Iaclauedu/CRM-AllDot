@@ -36,6 +36,7 @@ interface Visao360DrawerProps {
   onAtualizarNegocio: (negocioId: string, atualizado: Partial<Negocio>) => void;
   onMarcarGanho?: (negocioId: string) => void;
   onMarcarPerdido?: (negocio: Negocio) => void;
+  onExcluirNegocio?: (negocioId: string) => void;
   etapas?: EtapaFunil[];
 }
 
@@ -46,6 +47,7 @@ export function Visao360Drawer({
   onAtualizarNegocio,
   onMarcarGanho,
   onMarcarPerdido,
+  onExcluirNegocio,
   etapas = DADOS_ETAPAS,
 }: Visao360DrawerProps) {
   // Escuta tecla ESC para fechar
@@ -156,6 +158,25 @@ export function Visao360Drawer({
                   >
                     <XCircle className="h-3.5 w-3.5 text-red-600" />
                     <span>Perdido</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Tem certeza que deseja excluir o negócio "${negocio.titulo}"? Esta ação removerá o card e seus dados definitivamente.`
+                        )
+                      ) {
+                        onExcluirNegocio?.(negocio.id);
+                      }
+                    }}
+                    className="gap-1.5 border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 text-xs font-semibold"
+                    title="Excluir negócio definitivamente"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                    <span>Excluir</span>
                   </Button>
                 </>
               )}

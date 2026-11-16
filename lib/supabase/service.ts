@@ -1078,6 +1078,92 @@ export async function adicionarProdutoAoNegocio(
   };
 }
 
+export async function atualizarProdutoNoNegocio(
+  negocioId: string,
+  produtoId: string,
+  quantidade: number,
+  valorUnitario: number
+): Promise<boolean> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/negocios/produtos', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          negocioId,
+          produtoId,
+          quantidade,
+          valorUnitario,
+        }),
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Erro de rede ao atualizar produto no negócio:', err);
+      return false;
+    }
+  }
+
+  try {
+    const supabase = criarClienteServidorPrivilegiado() || (createClient() as any);
+    await supabase
+      .from('negocios_produtos')
+      .update({ quantidade, valor_unitario: valorUnitario })
+      .eq('negocio_id', negocioId)
+      .eq('produto_id', produtoId);
+
+    const { data: todosItens } = await supabase
+      .from('negocios_produtos')
+      .select('subtotal, quantidade, valor_unitario')
+      .eq('negocio_id', negocioId);
+
+    const novoValorTotal = (todosItens || []).reduce(
+      (acc: number, item: any) =>
+        acc + (Number(item.subtotal) || Number(item.quantidade) * Number(item.valor_unitario) || 0),
+      0
+    );
+
+    await supabase
+      .from('negocios')
+      .update({ valor: novoValorTotal, atualizado_em: new Date().toISOString() })
+      .eq('id', negocioId);
+
+    return true;
+  } catch (err) {
+    console.error('Erro ao atualizar produto no negócio no Supabase:', err);
+    return false;
+  }
+}
+
+export async function excluirNegocioDoBanco(negocioId: string): Promise<boolean> {
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`/api/negocios?id=${encodeURIComponent(negocioId)}`, {
+        method: 'DELETE',
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('Erro de rede ao excluir negócio:', err);
+      return false;
+    }
+  }
+
+  try {
+    const supabase = criarClienteServidorPrivilegiado() || (createClient() as any);
+    await supabase.from('negocios_produtos').delete().eq('negocio_id', negocioId);
+    await supabase.from('atividades').delete().eq('negocio_id', negocioId);
+    await supabase.from('historico_etapas').delete().eq('negocio_id', negocioId);
+    const { error } = await supabase.from('negocios').delete().eq('id', negocioId);
+    if (error) {
+      console.error('Erro ao excluir negócio no banco:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('Erro ao excluir negócio no banco:', err);
+    return false;
+  }
+}
+
 export async function removerProdutoDoNegocio(negocioId: string, produtoId: string): Promise<boolean> {
   // No navegador, usa a rota de API com privilégios de service role
   if (typeof window !== 'undefined') {

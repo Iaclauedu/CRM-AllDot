@@ -44,6 +44,7 @@ import {
   criarNegocioNoBanco,
   atualizarPropriedadesNegocioBanco,
   atualizarNomeOuPropriedadesEtapaBanco,
+  excluirNegocioDoBanco,
 } from '@/lib/supabase/service';
 import { formatarMoeda, obterCodigoNegocio } from '@/lib/utils';
 import {
@@ -338,8 +339,9 @@ export function KanbanBoard({
     }
 
     if (overId === 'zone-excluir') {
+      excluirNegocioDoBanco(negocioId);
       setNegocios((prev) => prev.filter((n) => n.id !== negocioId));
-      setMensagemSucesso(`Negócio "${negocioAtual.titulo}" excluído.`);
+      setMensagemSucesso(`Negócio "${negocioAtual.titulo}" excluído definitivamente.`);
       setTimeout(() => setMensagemSucesso(null), 3000);
       return;
     }
@@ -810,6 +812,13 @@ export function KanbanBoard({
         onMarcarPerdido={(n) => {
           setNegocio360(null);
           setNegocioParaPerda(n);
+        }}
+        onExcluirNegocio={(id) => {
+          excluirNegocioDoBanco(id);
+          setNegocios((prev) => prev.filter((n) => n.id !== id));
+          setNegocio360(null);
+          setMensagemSucesso('Negócio excluído com sucesso.');
+          setTimeout(() => setMensagemSucesso(null), 3500);
         }}
       />
 
