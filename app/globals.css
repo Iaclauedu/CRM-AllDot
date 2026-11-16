@@ -108,28 +108,73 @@
     margin: 0;
   }
 
-  body * {
-    visibility: hidden;
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #18181b !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  #area-impressao-proposta,
-  #area-impressao-proposta * {
-    visibility: visible;
+  /* Oculta elementos fora do portal de impressão (apenas na janela principal) */
+  body:not(.iframe-impressao) > *:not([data-radix-portal]):not(#portal-proposta):not(#iframe-impressao-proposta) {
+    display: none !important;
+  }
+
+  /* Remove restrições de overflow, posição fixa e sombras no container do modal */
+  [data-radix-portal],
+  [role="dialog"],
+  .modal-proposta-overlay,
+  .modal-proposta-container,
+  .modal-proposta-scroll {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .imprimir-ocultar {
+    display: none !important;
   }
 
   #area-impressao-proposta {
-    position: absolute;
-    left: 0;
-    top: 0;
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     background: transparent !important;
+    overflow: visible !important;
   }
 
-  .print\\:break-after-page {
+  .page-a4 {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    height: 297mm !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
     break-after: page !important;
     page-break-after: always !important;
+    overflow: hidden !important;
+    position: relative !important;
+    box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 }

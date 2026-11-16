@@ -988,18 +988,83 @@ export async function adicionarProdutoAoNegocio(
   valorUnitario: number = 0
 ): Promise<{ produto_id: string; nome: string; quantidade: number; valor_unitario: number; subtotal: number }> {
   const subtotal = quantidade * valorUnitario;
+
+  // No navegador, usa a rota de API com privilégios de service role para persistir no banco
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/negocios/produtos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          negocioId,
+          produtoId,
+          quantidade,
+          valorUnitario,
+        }),
+      });
+
+      if (!res.ok) {
+        const erroJson = await res.json().catch(() => ({}));
+        console.warn('Aviso ao adicionar produto via API /api/negocios/produtos:', erroJson);
+      }
+    } catch (err) {
+      console.error('Erro de rede ao adicionar produto via API:', err);
+    }
+
+    return {
+      produto_id: produtoId,
+      nome,
+      quantidade,
+      valor_unitario: valorUnitario,
+      subtotal,
+    };
+  }
+
+  // No servidor (SSR ou rotas internas)
   try {
-    const supabase = createClient() as any;
-    await supabase.from('negocios_produtos').upsert(
-      {
+    const supabase = criarClienteServidorPrivilegiado() || (createClient() as any);
+    const { data: itemExistente } = await supabase
+      .from('negocios_produtos')
+      .select('id, quantidade, valor_unitario')
+      .eq('negocio_id', negocioId)
+      .eq('produto_id', produtoId)
+      .maybeSingle();
+
+    if (itemExistente) {
+      const novaQtd = Number(itemExistente.quantidade) + quantidade;
+      await supabase
+        .from('negocios_produtos')
+        .update({
+          quantidade: novaQtd,
+          valor_unitario: valorUnitario > 0 ? valorUnitario : itemExistente.valor_unitario,
+        })
+        .eq('id', itemExistente.id);
+    } else {
+      await supabase.from('negocios_produtos').insert({
         organizacao_id: ORG_PADRAO_ID,
         negocio_id: negocioId,
         produto_id: produtoId,
         quantidade: quantidade,
         valor_unitario: valorUnitario,
-      },
-      { onConflict: 'negocio_id,produto_id' }
+      });
+    }
+
+    // Recalcula total do negócio
+    const { data: todosItens } = await supabase
+      .from('negocios_produtos')
+      .select('subtotal, quantidade, valor_unitario')
+      .eq('negocio_id', negocioId);
+
+    const novoValorTotal = (todosItens || []).reduce(
+      (acc: number, item: any) =>
+        acc + (Number(item.subtotal) || Number(item.quantidade) * Number(item.valor_unitario) || 0),
+      0
     );
+
+    await supabase
+      .from('negocios')
+      .update({ valor: novoValorTotal, atualizado_em: new Date().toISOString() })
+      .eq('id', negocioId);
   } catch (err) {
     console.error('Erro ao adicionar produto no Supabase:', err);
   }
@@ -1014,8 +1079,30 @@ export async function adicionarProdutoAoNegocio(
 }
 
 export async function removerProdutoDoNegocio(negocioId: string, produtoId: string): Promise<boolean> {
+  // No navegador, usa a rota de API com privilégios de service role
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(
+        `/api/negocios/produtos?negocioId=${encodeURIComponent(negocioId)}&produtoId=${encodeURIComponent(produtoId)}`,
+        {
+          method: 'DELETE',
+        }
+      );
+      if (!res.ok) {
+        const erroJson = await res.json().catch(() => ({}));
+        console.warn('Aviso ao remover produto via API /api/negocios/produtos:', erroJson);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Erro de rede ao remover produto via API:', err);
+      return false;
+    }
+  }
+
+  // No servidor (SSR ou rotas internas)
   try {
-    const supabase = createClient() as any;
+    const supabase = criarClienteServidorPrivilegiado() || (createClient() as any);
     const { error } = await supabase
       .from('negocios_produtos')
       .delete()
@@ -1026,6 +1113,24 @@ export async function removerProdutoDoNegocio(negocioId: string, produtoId: stri
       console.error('Erro ao remover produto no Supabase:', error);
       return false;
     }
+
+    // Recalcula total do negócio
+    const { data: todosItens } = await supabase
+      .from('negocios_produtos')
+      .select('subtotal, quantidade, valor_unitario')
+      .eq('negocio_id', negocioId);
+
+    const novoValorTotal = (todosItens || []).reduce(
+      (acc: number, item: any) =>
+        acc + (Number(item.subtotal) || Number(item.quantidade) * Number(item.valor_unitario) || 0),
+      0
+    );
+
+    await supabase
+      .from('negocios')
+      .update({ valor: novoValorTotal, atualizado_em: new Date().toISOString() })
+      .eq('id', negocioId);
+
     return true;
   } catch (err) {
     console.error('Erro ao remover produto no Supabase:', err);

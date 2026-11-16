@@ -526,7 +526,7 @@ export const DADOS_CONTATOS: Contato[] = [
 
 export const DADOS_PRODUTOS: Produto[] = [
   {
-    id: 'p1111111-1111-4111-c111-111111111111',
+    id: 'a1111111-1111-4111-c111-111111111111',
     nome: 'Plano Professional (MRR)',
     descricao: 'Assinatura mensal para até 15 usuários com integrações premium',
     codigo_sku: 'SKU-PRO-01',
@@ -534,7 +534,7 @@ export const DADOS_PRODUTOS: Produto[] = [
     ativo: true,
   },
   {
-    id: 'p2222222-2222-4222-c222-222222222222',
+    id: 'a2222222-2222-4222-c222-222222222222',
     nome: 'Plano Enterprise (MRR)',
     descricao: 'Assinatura mensal para usuários ilimitados, SLA dedicado e SSO',
     codigo_sku: 'SKU-ENT-01',
@@ -542,7 +542,7 @@ export const DADOS_PRODUTOS: Produto[] = [
     ativo: true,
   },
   {
-    id: 'p3333333-3333-4333-c333-333333333333',
+    id: 'a3333333-3333-4333-c333-333333333333',
     nome: 'Setup & Onboarding VIP',
     descricao: 'Implantação técnica, migração de dados e treinamento da equipe comercial',
     codigo_sku: 'SKU-SETUP-01',
@@ -550,7 +550,7 @@ export const DADOS_PRODUTOS: Produto[] = [
     ativo: true,
   },
   {
-    id: 'p4444444-4444-4444-c444-444444444444',
+    id: 'a4444444-4444-4444-c444-444444444444',
     nome: 'Consultoria Comercial 10h',
     descricao: 'Pacote avulso de 10 horas de mentoria de playbook de vendas',
     codigo_sku: 'SKU-CONS-10H',
@@ -602,14 +602,14 @@ export const DADOS_NEGOCIOS: Negocio[] = [
     ],
     produtos: [
       {
-        produto_id: 'p2222222-2222-4222-c222-222222222222',
+        produto_id: 'a2222222-2222-4222-c222-222222222222',
         nome: 'Plano Enterprise (MRR)',
         quantidade: 1,
         valor_unitario: 4900.0,
         subtotal: 4900.0,
       },
       {
-        produto_id: 'p3333333-3333-4333-c333-333333333333',
+        produto_id: 'a3333333-3333-4333-c333-333333333333',
         nome: 'Setup & Onboarding VIP',
         quantidade: 1,
         valor_unitario: 3500.0,
